@@ -1,4 +1,5 @@
-const CACHE = 'mkc-shell-v1';
+// Shell files are served cache-first: bump this on every shell change, or installed phones keep the old app.
+const CACHE = 'mkc-shell-v2';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './api.js', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png', './favicon.png',
@@ -8,7 +9,8 @@ const SHELL = [
 ];
 const urls = new Set(SHELL.map(path => new URL(path, self.registration.scope).href));
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  // 'reload' skips the browser's HTTP cache (GitHub Pages sends max-age=600), so a new version never stores old files.
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(path => new Request(path, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('mkc-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));

@@ -266,6 +266,39 @@ try {
     await context.close();
   });
 
+  await record('a refused stream plays from a whole-film download', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const page = await context.newPage();
+    page.setDefaultTimeout(10000);
+    page.on('pageerror', error => errors.push(`stream fallback: ${error.message}`));
+    const videoData = await readFile(new URL(catalog.films[0].versions[0].file, root));
+    let metadata = 0;
+    await page.route('https://api.github.com/**', async route => {
+      const request = route.request();
+      const path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1]);
+      const headers = { 'access-control-allow-origin': '*' };
+      if (path === 'cinema.json') return route.fulfill({ json: catalog, headers });
+      if (request.headers().accept === 'application/vnd.github.object') {
+        metadata++;
+        return route.fulfill({ json: { download_url: `https://raw.githubusercontent.com/demo/mk-cinema/test.mp4?token=synthetic-${metadata}` }, headers });
+      }
+      return route.fulfill({ body: await readFile(new URL(path, root)), contentType: 'image/jpeg', headers });
+    });
+    // Like iPhone Safari with GitHub's octet-stream type: the video element cannot stream it, fetch() can download it.
+    await page.route('https://raw.githubusercontent.com/**', route => route.request().resourceType() === 'media'
+      ? route.fulfill({ body: 'not a video', contentType: 'application/octet-stream' })
+      : route.fulfill({ body: videoData, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' } }));
+    await loaded(page, '');
+    await page.getByLabel('GitHub token', { exact: true }).fill('synthetic-test-token');
+    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await page.getByRole('button', { name: 'Watch film', exact: true }).click();
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('video')?.src.startsWith('blob:') && document.querySelector('video')?.readyState >= 2);
+    assert.equal(metadata, 2, 'The fallback asks for one fresh URL');
+    assert.equal(await page.locator('main.player').count(), 1, 'The player stays open');
+    await context.close();
+  });
+
   await record('offline recovery and settings', async () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
     const page = await context.newPage();

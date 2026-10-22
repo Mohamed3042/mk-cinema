@@ -118,8 +118,11 @@ function showError(error) {
   if (error.code === 'token') connect('Token is wrong or expired');
   else stateScreen(error.code || (navigator.onLine ? 'github-unreachable' : 'offline'));
 }
-async function playbackURL(signal) {
+async function playbackURL(signal, whole = false, onProgress) {
   const url = await getVideoURL(version.file, { demo, token, signal });
+  // GitHub's raw host sends films as application/octet-stream with nosniff, which iPhone Safari can refuse
+  // to stream. The fallback downloads the whole film and plays it from memory as video/mp4.
+  if (!demo && whole) return URL.createObjectURL(new Blob([await downloadVideo(url, { signal, onProgress })], { type: 'video/mp4' }));
   if (!demo) return url;
   const response = await fetch(url, { signal });
   if (!response.ok) throw new CinemaError('invalid');
@@ -130,9 +133,13 @@ async function play() {
   mount('player', `<header class="player-header"><button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button><div>${title(film,'h1')}<p class="eyebrow">${kindName(version.kind)} ${version.kind==='phone'?'9:16':'16:9'}</p></div></header><div class="video-stage"><video playsinline preload="metadata" aria-label="${escape(film.title)}"></video><button class="center-play" data-action="toggle-play" aria-label="Pause">${icon('pause')}</button><p class="player-status" role="status">Opening film…</p></div><div class="player-controls"><label class="sr-only" for="seek">Seek</label><input type="range" id="seek" min="0" max="100" step="0.1" value="0"><div class="player-bottom"><span id="elapsed">0:00</span><span id="total">${duration(film.seconds)}</span><button class="icon-button" data-action="mute" aria-label="Mute">${icon('sound')}</button><button class="icon-button" data-action="fullscreen" aria-label="Full screen">${icon('expand')}</button></div></div>`);
   const stamp = revision, signal = operation.signal, video = main.querySelector('video');
   const status = main.querySelector('.player-status');
-  let refreshing = false, recoveryUsed = false, lastTime = 0, recoveryTime = 0;
+  // Called inside the tap so iPhone lets the later play() start with sound after the URL arrives.
+  video.play().catch(() => {});
+  let refreshing = false, recoveryUsed = false, lastTime = 0, recoveryTime = 0, streamed = false, whole = false;
   async function source(resume = 0) {
-    const url = await playbackURL(signal);
+    const url = await playbackURL(signal, whole, ({ loaded, total }) => {
+      if (stamp === revision && total) status.textContent = `Loading film… ${Math.floor(loaded / total * 100)}%`;
+    });
     if (stamp !== revision) { if(url.startsWith('blob:')) URL.revokeObjectURL(url); return; }
     mediaURL = url;
     video.src = url;
@@ -145,10 +152,13 @@ async function play() {
   video.addEventListener('durationchange',()=>{ if(stamp===revision && Number.isFinite(video.duration)) main.querySelector('#total').textContent=duration(video.duration); });
   video.addEventListener('play',updatePlayButton); video.addEventListener('pause',updatePlayButton);
   video.addEventListener('ended',updatePlayButton);
+  video.addEventListener('loadedmetadata',()=>{ streamed=true; });
   video.addEventListener('error',async()=>{
     if (stamp!==revision || refreshing) return;
     if (recoveryUsed) { showError(new CinemaError('invalid')); return; }
     refreshing=true; recoveryUsed=true; recoveryTime=lastTime; status.textContent='Refreshing film…';
+    // A stream that never loaded was refused, not expired: switch to the whole-file download for good.
+    if (!streamed) whole=true;
     try { await source(lastTime); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
     finally { refreshing=false; }
   });
