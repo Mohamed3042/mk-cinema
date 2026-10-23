@@ -106,13 +106,26 @@ def make_icons():
     image.resize((48, 48), Image.Resampling.LANCZOS).save(ROOT / "favicon.png")
 
 
+CLIPS = ["golden-hour", "light-journey", "velvet-steps", "amber-room", "quiet-city", "last-light", "paper-moon"]
+
+
 def make_videos():
+    """One 12-second clip per film and shape: a slow push-in on its own poster with a light beam sweeping across."""
     ffmpeg = shutil.which("ffmpeg")
     assert ffmpeg, "ffmpeg is required"
-    for kind, dimensions in [("phone", "180x320"), ("desktop", "320x180")]:
-        dest = DEMO / f"video-{kind}.mp4"
-        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size={dimensions}:rate=12", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "29", "-movflags", "+faststart", str(dest)], check=True)
-        assert dest.stat().st_size <= 300_000, dest
+    for index, slug in enumerate(CLIPS):
+        for kind, (width, height) in [("phone", (360, 640)), ("desktop", (640, 360))]:
+            if kind == "desktop" and slug == "velvet-steps":
+                continue
+            dest = DEMO / f"{slug}-{kind}.mp4"
+            # The beam brightens luma only, so the poster keeps its colours. Each film starts it at a different place.
+            glow = f"exp(-pow((X+Y*0.35-(W*1.6)*mod(T+{index * 1.7:.1f},12)/12+W*0.1)/(W*0.13),2))"
+            chain = (f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,crop={width * 2}:{height * 2},"
+                     f"zoompan=z='1+0.16*(1-cos(PI*on/360))/2':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps=30,"
+                     f"format=yuv420p,geq=lum='clip(lum(X,Y)+70*{glow},0,255)':cb='cb(X,Y)-6*{glow}':cr='cr(X,Y)+8*{glow}'")
+            # -g 12 puts a keyframe every 0.4 s, so scroll-driven scrubbing and backward seeks stay cheap.
+            subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "30", "-t", "12", "-i", str(DEMO / "posters" / f"{slug}.jpg"), "-vf", chain, "-c:v", "libx264", "-preset", "slow", "-crf", "30", "-g", "12", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(dest)], check=True)
+            assert dest.stat().st_size <= 400_000, dest
 
 
 def make_catalog():
@@ -130,12 +143,12 @@ def make_catalog():
     for index, (slug, title, portrait, phone_only) in enumerate(entries):
         poster(index, portrait).save(DEMO / "posters" / f"{slug}.jpg", quality=88, optimize=True)
         versions = []
-        for kind, width, height in [("phone", 180, 320), ("desktop", 320, 180)]:
+        for kind, width, height in [("phone", 360, 640), ("desktop", 640, 360)]:
             if phone_only and kind == "desktop":
                 continue
-            path = f"demo/video-{kind}.mp4"
+            path = f"demo/{slug}-{kind}.mp4"
             versions.append({"kind": kind, "file": path, "w": width, "h": height, "bytes": (ROOT / path).stat().st_size})
-        films.append({"id": slug, "title": title, "dir": "rtl" if index == 1 else "ltr", "seconds": 3, "added": f"2026-10-{22-index:02}", "poster": f"demo/posters/{slug}.jpg", "posterShape": "9:16" if portrait else "16:9", "versions": versions, "release": f"demo-{slug}"})
+        films.append({"id": slug, "title": title, "dir": "rtl" if index == 1 else "ltr", "seconds": 12, "added": f"2026-10-{22-index:02}", "poster": f"demo/posters/{slug}.jpg", "posterShape": "9:16" if portrait else "16:9", "versions": versions, "release": f"demo-{slug}"})
     (DEMO / "cinema.json").write_text(json.dumps({"version": 1, "updated": "2026-10-22T12:00:00Z", "films": films}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
@@ -145,4 +158,4 @@ if __name__ == "__main__":
     make_icons()
     make_videos()
     make_catalog()
-    print("Created local OFL fonts, icons, seven original posters, and two 3-second test clips.")
+    print("Created local OFL fonts, icons, seven original posters, and one 12-second clip per film and shape.")

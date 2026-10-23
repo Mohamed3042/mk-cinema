@@ -334,7 +334,7 @@ try {
     { status: 403, remaining: '0', text: 'GitHub needs a pause' },
     { abort: true, text: 'GitHub is unavailable' },
   ]) await record(`mock GitHub ${test.abort ? 'network failure' : test.status + (test.remaining ? ' rate limit' : '')}`, async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(`mock GitHub: ${error.message}`));
     await page.route('https://api.github.com/**', route => test.abort ? route.abort('failed') : route.fulfill({ status: test.status, body: '{}', headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-ratelimit-remaining', ...(test.remaining ? { 'x-ratelimit-remaining': test.remaining } : {}) } }));
@@ -346,7 +346,7 @@ try {
   });
 
   await record('a completed share does not reopen a film after leaving', async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
       Object.defineProperty(navigator, 'share', { value: () => new Promise(resolve => { window.__completeShare = resolve; }), configurable: true });
@@ -366,7 +366,7 @@ try {
   });
 
   await record('two video URL refreshes keep the play position', async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     page.on('pageerror', error => errors.push(`video refresh: ${error.message}`));
@@ -405,7 +405,7 @@ try {
   });
 
   await record('a refused stream plays from a whole-film download', async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     page.on('pageerror', error => errors.push(`stream fallback: ${error.message}`));
@@ -438,7 +438,7 @@ try {
   });
 
   await record('offline recovery and settings', async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await context.newPage();
     captureErrors(page, 'offline recovery');
     await loaded(page);
@@ -484,7 +484,7 @@ try {
     await context.close();
   });
   await record('service worker caches the app shell only', async () => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'allow' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'allow' });
     const page = await context.newPage();
     captureErrors(page, 'service worker');
     await loaded(page);

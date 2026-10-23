@@ -13,16 +13,22 @@
   <link rel="apple-touch-icon" href="./icon-180.png">
   <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./motion.css">
   <title>MK Cinema</title>
   <script type="module" src="./app.js"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <header id="topbar" class="topbar" hidden></header>
   <main id="main" tabindex="-1"><p class="boot">Opening your cinema…</p></main>
+  <nav id="tabbar" class="tabbar" aria-label="Main" hidden></nav>
+  <p id="announce" class="sr-only" role="status" aria-live="polite"></p>
   <noscript>MK Cinema needs JavaScript to connect to your private library.</noscript>
   <dialog id="settings" aria-labelledby="settings-title">
     <div class="sheet-head"><h2 id="settings-title">Your cinema</h2><button data-close-settings class="icon-button" aria-label="Close settings">×</button></div>
     <p>Your token stays in this browser. Forget it to disconnect and clear cached posters.</p>
+    <label class="switch"><input type="checkbox" id="autoplay-toggle" role="switch" aria-describedby="autoplay-note"><span>Autoplay previews</span></label>
+    <p id="autoplay-note" class="small"></p>
     <button id="forget-token" class="secondary">Forget token</button>
     <p id="settings-status" role="status"></p>
   </dialog>

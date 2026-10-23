@@ -29,8 +29,6 @@
 body{background:var(--canvas)}
 .header-actions{margin-left:auto;display:flex;gap:8px}.header-actions .icon-button{border:0}
 .library{max-width:none;padding:0 0 max(32px,env(safe-area-inset-bottom));animation:none}
-.library .header{height:64px;min-height:64px;padding:8px max(20px,env(safe-area-inset-right)) 8px max(20px,env(safe-area-inset-left));margin:0;border:0;background:#141414;z-index:2}
-.library .wordmark{font-size:30px;letter-spacing:-1px}.library .brand{display:block}
 .library h1,.library h2,.library .film-title{font-family:DM,Arabic,sans-serif;font-weight:600;line-height:1.15}
 .filters{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:0 20px 12px;scroll-padding:20px;background:var(--canvas)}
 .filters::-webkit-scrollbar{display:none}
@@ -56,13 +54,13 @@ body{background:var(--canvas)}
 .shelf-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 24px;margin-bottom:12px}
 .shelf h2{font-size:20px;letter-spacing:-.3px}.shelf-heading>span{font-size:12px;color:var(--muted);white-space:nowrap}
 .card-track{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:24px;padding:12px 24px 20px;scrollbar-width:thin;scrollbar-color:#555 transparent;margin-top:-12px}
-.card{position:relative;flex:0 0 74%;min-width:0;scroll-snap-align:start;border-radius:4px;transition:transform .2s ease;background:#242424}
+.card{position:relative;flex:0 0 74%;min-width:0;scroll-snap-align:start;border-radius:4px;background:#242424}
 .film-card{position:relative;display:block;width:100%;aspect-ratio:16/9;overflow:hidden;padding:0;background:#242424;border-radius:4px;text-align:start}
 .film-card .poster{width:100%;height:100%;border:0;border-radius:4px;object-position:center 42%}
 .film-card::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 25%,#000d)}
 .card-title{position:absolute;z-index:1;bottom:14px;left:14px;right:14px;font-size:17px;line-height:1.3!important;text-shadow:0 1px 8px #000;overflow-wrap:anywhere}
 .cut-count{position:absolute;z-index:1;top:10px;right:10px;background:#141414e6;color:#fff;padding:4px 8px;border-radius:3px;font-size:11px}
-.card-hover{display:none}.watch-progress{position:absolute;bottom:0;left:0;margin:0;width:100%;height:4px;border-radius:0}
+.watch-progress{position:absolute;bottom:0;left:0;margin:0;width:100%;height:4px;border-radius:0}
 .results{padding:28px 20px;min-height:65svh}.results-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px}
 .results h1{font-size:28px;margin:10px 0}.results .eyebrow{font-size:10px;letter-spacing:2px}.results-count{font-size:14px}
 .results-head .text-button{padding:10px 0;flex-shrink:0}.results-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 10px}
@@ -83,8 +81,7 @@ body:has(dialog[open]){overflow:hidden}
 .detail-body .shelf{margin-top:28px;margin-bottom:0}.detail-body .shelf-heading{padding:0}.detail-body .card-track{padding-left:0;padding-right:0;scroll-padding:0}.detail-body .card{flex-basis:76%}
 .library footer{padding:16px 24px;font-size:12px;text-align:left;color:#aaa}
 @media(min-width:900px){
-  .library .header{height:76px;padding:12px 4%;position:absolute;top:0;left:0;right:0;background:linear-gradient(#141414,transparent);z-index:3}
-  .library .wordmark{font-size:36px}.filters{position:relative;z-index:2;padding:76px 4% 12px;background:#141414}
+  .filters{padding:0 4% 12px}
   .billboard{min-height:80vh;margin-top:-1px}.billboard-copy{padding:80px 0 80px 4%;max-width:820px}.billboard h1{font-size:72px;letter-spacing:-2px}
   .billboard-shade{background:linear-gradient(0deg,#141414,transparent 50%),linear-gradient(90deg,#141414f2 0%,#141414cc 26%,#14141422 75%)}
   .billboard .eyebrow{font-size:12px}.blurb{font-size:18px}.hero-meta{font-size:14px}.billboard-actions{max-width:360px}
@@ -94,9 +91,4 @@ body:has(dialog[open]){overflow:hidden}
   .detail-body{padding:0 36px 32px}.detail-body h1{font-size:36px}.detail-body .film-actions{grid-template-columns:1fr 1fr;max-width:460px}.detail-body .film-actions button{min-height:48px}.detail-body .card{flex-basis:46%}
   .library footer{padding-left:4%}
 }
-@media(hover:hover) and (pointer:fine){
-  .card:hover,.card:focus-within{transform:scale(1.08);z-index:2;box-shadow:0 8px 24px #0009}
-  .card-hover{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:10px 12px;background:#181818;opacity:0;visibility:hidden;transition:opacity .15s}
-  .card:hover .card-hover,.card:focus-within .card-hover{opacity:1;visibility:visible}.card-hover>span{font-size:12px;line-height:1.5;color:#eee}.card-play{border-radius:50%;background:#fff;color:#141414;border:0}.card:focus-within .film-card{outline-offset:2px}
-}
-@media(max-width:360px){.library{padding-left:0;padding-right:0}.library .header{padding-left:16px;padding-right:16px}.library .wordmark{font-size:28px}.filters{padding-left:16px}.billboard-copy{padding-left:20px;padding-right:20px}.results-grid{grid-template-columns:1fr}.results-grid .card-title{font-size:17px}.shelf-heading{padding-left:20px}.card-track{padding-left:20px}.detail-body{padding-left:16px;padding-right:16px}}
+@media(max-width:360px){.library{padding-left:0;padding-right:0}.filters{padding-left:16px}.billboard-copy{padding-left:20px;padding-right:20px}.results-grid{grid-template-columns:1fr}.results-grid .card-title{font-size:17px}.shelf-heading{padding-left:20px}.card-track{padding-left:20px}.detail-body{padding-left:16px;padding-right:16px}}

@@ -1,7 +1,16 @@
 import { CinemaError, getCatalog, getPoster, getVideoURL, downloadVideo, forgetPosters } from './api.js';
-import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms } from './catalog.js';
+import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms, readList, saveList, inList, toggleList, listGroups } from './catalog.js';
+import { MAX_WHOLE_BYTES, claimPreview, reduced, onReducedChange, readAutoplay, writeAutoplay } from './motion.js';
+import { startPreview } from './previews.js';
+import { mountBillboard } from './billboard.js';
+import { mountRows } from './rows.js';
+import { mountFeed } from './feed.js';
+import { createBob } from './bob.js';
+import { openSheet, closeSheet, enableDrag } from './modal.js';
 
 const main = document.querySelector('main');
+const topbar = document.querySelector('#topbar');
+const tabbar = document.querySelector('#tabbar');
 const settings = document.querySelector('#settings');
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -9,14 +18,24 @@ let token = '';
 try { if (!demo) token = localStorage.getItem('mkc.token') || ''; } catch { /* The connect form explains storage failures. */ }
 let catalog, film, version, screen, revision = 0, operation = new AbortController();
 let savedFile, mediaURL, posterURLs = new Map();
-let activeFilter = 'All', query = '', searching = false, gridMode = false, detailOpener;
+let activeFilter = 'All', query = '', searching = false, gridMode = false, detailOpener, detailOrigin;
+let tab = 'home', exploreRow = null, rowFilms = new Map(), live = {}, listDirty = false, chromeKey = '', groupCache;
 let storage;
 try { storage = localStorage; } catch { /* Watching also works with storage blocked. */ }
 const progressKey = demo ? 'mkc.demo.progress' : 'mkc.progress';
+const listKey = demo ? 'mkc.demo.list' : 'mkc.list';
+let listIds = readList(storage, listKey), autoplay = readAutoplay(storage);
+const desktopQuery = matchMedia('(min-width: 900px)');
 const filters = ['All', 'MK Voice', 'Business OS', 'Talent Atlas', 'Job Orbit', 'Suite & apps', 'More', 'Ads', 'Demos', 'Arabic'];
+const TABS = [['home', 'Home'], ['new', 'New & Hot'], ['films', 'Films'], ['ads', 'Ads'], ['demos', 'Demos'], ['list', 'My List']];
+const PHONE_TABS = [['home', 'Home', 'home'], ['new', 'New & Hot', 'flame'], ['search', 'Search', 'search'], ['list', 'My List', 'list']];
+const kindTabs = { films: ['Films', 'FILMS'], ads: ['Ads', 'ADS & LOOPS'], demos: ['Demos', 'DEMOS'] };
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const duration = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const kindName = kind => kind === 'phone' ? 'Phone' : 'Desktop';
+const isNew = f => { const time = Date.parse(f.added); return time >= Date.now() - 7 * 86400000 && time <= Date.now(); };
+const formatDate = value => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.parse(value));
+const motionOn = () => autoplay && !reduced();
 const iconPaths = {
   search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>',
   back: '<path d="m15 4-8 8 8 8"/>', play: '<path d="m8 4 12 8-12 8Z" fill="currentColor" stroke="none"/>',
@@ -27,7 +46,9 @@ const iconPaths = {
   offline: '<path d="m3 3 18 18M2 9a16 16 0 0 1 18-2M6 13a10 10 0 0 1 9-2M10 17l2-1"/><circle cx="12" cy="21" r="1"/>',
   cloud: '<path d="M6 18a5 5 0 0 1-1-10 7 7 0 0 1 13-2M18 10a4 4 0 0 1 0 8h-7M3 22 22 2"/>',
   sound: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 8a6 6 0 0 1 0 8M19 4a11 11 0 0 1 0 16"/>',
-  expand: '<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/>', arrow: '<path d="m9 5 7 7-7 7"/>', alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/>'
+  expand: '<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/>', arrow: '<path d="m9 5 7 7-7 7"/>', alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/>',
+  home: '<path d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M10 20v-5h4v5"/>', flame: '<path d="M12 3c.4 3 3.2 4.6 4.4 7A6.5 6.5 0 1 1 5.6 14c0-1.9.8-3.4 2-4.5.3 1.3.9 2 1.9 2.4C9.4 8.7 10.2 5.4 12 3Z"/>',
+  list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconPaths[name] || ''}</svg>`;
 const title = (f, tag = 'h2', cls = '') => `<${tag} dir="auto" class="film-title ${cls}">${escape(f.title)}</${tag}>`;
@@ -35,20 +56,142 @@ const badges = f => `<div class="badges">${f.versions.map(v => `<span class="bad
 const poster = (f, cls = '') => `<img class="poster ${cls}" data-poster="${escape(f.id)}" alt="" width="640" height="800">`;
 const brand = '<span class="wordmark">MK <span>Cinema</span></span>';
 function header(back = false) {
-  return `<header class="header ${back ? 'compact' : ''}">${back ? `<button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button>` : ''}<div class="brand">${brand}</div>${!back ? `<div class="header-actions">${screen === 'library' ? `<button class="icon-button" data-action="search" aria-label="Search" aria-expanded="${searching}">${icon('search')}</button>` : ''}<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div>` : ''}</header>`;
+  return `<header class="header ${back ? 'compact' : ''}">${back ? `<button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button>` : ''}<div class="brand">${brand}</div>${!back ? `<div class="header-actions"><button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div>` : ''}</header>`;
+}
+function groupsOf() {
+  if (groupCache?.source !== catalog) {
+    const groups = groupFilms(catalog.films);
+    groupCache = { source: catalog, groups, byId: new Map(groups.flatMap(group => group.variants.map(item => [item.id, item]))) };
+  }
+  return groupCache.groups;
+}
+const findFilm = id => { groupsOf(); return groupCache.byId.get(id); };
+const titleIds = id => groupsOf().find(group => group.variants.some(item => item.id === id))?.variants.map(item => item.id) || [id];
+const announce = text => { document.querySelector('#announce').textContent = text; };
+
+// Previews reuse the film stream the player gets from api.js. Short-lived links are cached for four minutes.
+// Demo clips go through a blob, like the player does, because the page policy only allows GitHub and blob media.
+const previewURLs = new Map(), wholeBlobs = new Map();
+function revokeWhole(key) { URL.revokeObjectURL(wholeBlobs.get(key)); wholeBlobs.delete(key); }
+function clearPreviews() { previewURLs.clear(); [...wholeBlobs.keys()].forEach(revokeWhole); }
+function source(f, prefer = desktopQuery.matches ? 'desktop' : 'phone') {
+  const cut = f.versions.find(item => item.kind === prefer) || f.versions[0];
+  const getURL = async ({ signal, fresh, whole } = {}) => {
+    if (whole) {
+      if (wholeBlobs.has(cut.file)) return wholeBlobs.get(cut.file);
+      const url = await getVideoURL(cut.file, { demo, token, signal });
+      const made = URL.createObjectURL(new Blob([await downloadVideo(url, { signal })], { type: 'video/mp4' }));
+      wholeBlobs.set(cut.file, made);
+      while (wholeBlobs.size > 2) revokeWhole(wholeBlobs.keys().next().value);
+      return made;
+    }
+    const hit = previewURLs.get(cut.file);
+    if (!fresh && hit && Date.now() - hit.at < 240000) return hit.promise;
+    // No abort signal here: the request is shared, so one caller leaving must not fail the others.
+    const promise = (async () => {
+      const url = await getVideoURL(cut.file, { demo, token });
+      if (!demo) return url;
+      const response = await fetch(url);
+      if (!response.ok) throw new CinemaError('invalid');
+      return URL.createObjectURL(await response.blob());
+    })();
+    previewURLs.set(cut.file, { at: Date.now(), promise });
+    promise.catch(() => previewURLs.delete(cut.file));
+    return promise;
+  };
+  return { getURL, canDownload: !demo && cut.bytes <= MAX_WHOLE_BYTES };
+}
+
+function toggleMyList(id) {
+  const ids = titleIds(id);
+  listIds = toggleList(listIds, ids);
+  saveList(storage, listIds, listKey);
+  const on = inList(listIds, ids);
+  announce(on ? 'Added to My List' : 'Removed from My List');
+  for (const button of document.querySelectorAll('[data-action="toggle-list"], [data-bob="list"]')) {
+    if (!ids.includes(button.dataset.id || button.closest('.bob')?.dataset.film)) continue;
+    const name = findFilm(button.dataset.id || button.closest('.bob').dataset.film)?.title || '';
+    button.setAttribute('aria-pressed', String(on)); button.setAttribute('aria-label', `${on ? 'Remove from' : 'Add to'} My List: ${name}`);
+    button.innerHTML = icon(on ? 'check' : 'plus');
+    button.classList.remove('pop'); void button.offsetWidth; button.classList.add('pop');
+  }
+  if (tab === 'list') { if (screen === 'library') library(); else listDirty = true; }
+  return on;
+}
+const listButton = (f, cls = '') => {
+  const on = inList(listIds, titleIds(f.id));
+  return `<button class="icon-button round list-toggle ${cls}" data-action="toggle-list" data-id="${escape(f.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove from' : 'Add to'} My List: ${escape(f.title)}">${icon(on ? 'check' : 'plus')}</button>`;
+};
+
+// The top bar (desktop) and the bottom tab bar (phone) live outside <main>, so they keep their state and
+// focus while the content under them is swapped.
+function chrome() {
+  const show = screen === 'library' || screen === 'film';
+  topbar.hidden = !show; document.body.classList.toggle('has-chrome', show);
+  if (!show) { tabbar.hidden = true; return; }
+  const desktop = desktopQuery.matches;
+  tabbar.hidden = desktop;
+  if (chromeKey !== String(desktop)) {
+    chromeKey = String(desktop);
+    topbar.innerHTML = `<div class="topbar-row"><button class="brand brand-button" data-tab="home" aria-label="MK Cinema home">${brand}</button>${desktop ? `<nav class="tabs" aria-label="Sections">${TABS.map(([id, label]) => `<button class="tab" data-tab="${id}" data-nav="${id}">${label}</button>`).join('')}<i class="tab-ink" aria-hidden="true"></i></nav>` : ''}<div class="header-actions">${desktop ? `<button class="icon-button" data-action="search" data-nav="search" aria-label="Search">${icon('search')}</button>` : ''}<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div></div>`;
+    tabbar.innerHTML = desktop ? '' : PHONE_TABS.map(([id, label, symbol]) => `<button data-nav="${id}" ${id === 'search' ? 'data-action="search"' : `data-tab="${id}"`}>${icon(symbol)}<span>${label}</span></button>`).join('');
+  }
+  const current = searching ? 'search' : tab;
+  for (const button of document.querySelectorAll('[data-nav]')) {
+    if (button.dataset.nav === current) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+  }
+  const on = topbar.querySelector('.tab[aria-current]'), ink = topbar.querySelector('.tab-ink');
+  if (ink) {
+    ink.classList.toggle('off', !on);
+    if (on) { ink.style.setProperty('--x', `${on.offsetLeft}px`); ink.style.setProperty('--w', `${on.offsetWidth}px`); }
+  }
+  paintBar();
+}
+// Transparent over the hero, solid #141414 after 80 px of scroll.
+function paintBar() { topbar.style.setProperty('--bar', Math.min(1, scrollY / 80).toFixed(3)); }
+addEventListener('scroll', paintBar, { passive: true });
+desktopQuery.addEventListener('change', () => { chromeKey = ''; chrome(); });
+
+// Tab changes crossfade for 250 ms (the browser's default view transition) where supported.
+function swap(render) {
+  if (reduced()) { render(); return; }
+  if (!document.startViewTransition) { // older Safari: fade the new page in instead
+    render(); main.classList.add('tab-in'); setTimeout(() => main.classList.remove('tab-in'), 260); return;
+  }
+  document.startViewTransition(async () => {
+    render();
+    // Wait briefly for the posters, so the new page fades in with its pictures rather than its skeletons.
+    const images = [...main.querySelectorAll('img.poster[src]')].slice(0, 16);
+    await Promise.race([Promise.all(images.map(img => img.decode().catch(() => {}))), new Promise(resolve => setTimeout(resolve, 250))]);
+  });
+}
+function go(next) {
+  if (!catalog || (screen !== 'library')) return;
+  if (next === tab && !searching && !gridMode && !exploreRow && activeFilter === 'All' && !query) { scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); return; }
+  tab = next; activeFilter = 'All'; query = ''; searching = false; gridMode = false; exploreRow = null;
+  swap(library);
+}
+
+function stopLive() {
+  for (const item of Object.values(live)) (item.destroy || item.stop)?.call(item);
+  live = {}; bob?.close();
 }
 function mount(next, html, { focus = true } = {}) {
   persistPlayback();
+  stopLive();
   operation.abort(); operation = new AbortController(); revision++;
-  const oldVideo = main.querySelector('video');
-  if (oldVideo) { oldVideo.pause(); oldVideo.removeAttribute('src'); oldVideo.load(); }
+  main.querySelectorAll('video').forEach(video => { video.pause(); video.removeAttribute('src'); video.load(); });
   if (mediaURL?.startsWith('blob:')) URL.revokeObjectURL(mediaURL);
   mediaURL = undefined;
-  screen = next; main.className = `screen ${next}`; main.innerHTML = html;
+  screen = next; main.className = `screen ${next}`; main.dataset.tab = next === 'library' ? tab : ''; main.innerHTML = html;
+  chrome();
   if (focus) main.focus({ preventScroll: true });
   window.scrollTo(0, 0);
   void fillPosters(revision);
 }
+// A poster fades in over the skeleton shimmer once it has loaded.
+function markReady(img) { img.classList.add('is-ready'); img.parentElement.classList.add('is-ready'); }
+main.addEventListener('load', event => { if (event.target.matches?.('img.poster')) markReady(event.target); }, true);
 async function fillPosters(stamp) {
   if (!catalog) return;
   const groups = new Map();
@@ -66,7 +209,7 @@ async function fillPosters(stamp) {
         if (stamp !== revision) { URL.revokeObjectURL(url); return; }
         posterURLs.set(f.poster, url);
       }
-      if (stamp === revision) images.forEach(img => { img.src = url; });
+      if (stamp === revision) images.forEach(img => { img.src = url; if (img.complete && img.naturalWidth) markReady(img); });
     } catch (error) {
       if (error.name !== 'AbortError' && stamp === revision) showError(error);
     }
@@ -92,64 +235,139 @@ async function loadLibrary() {
 function library() {
   savedFile = undefined;
   if (!catalog?.films.length) { stateScreen('empty'); return; }
+  const all = groupsOf(), progress = readProgress(storage, progressKey);
   const filterScroll = main.querySelector('.filters')?.scrollLeft || 0;
-  const groups = groupFilms(catalog.films), featured = groups[0];
-  const progress = readProgress(storage, progressKey);
-  const matches = filterFilms(groups, activeFilter, query);
-  const filtered = gridMode || activeFilter !== 'All' || query.trim();
-  const recent = groups.filter(f => Date.parse(f.added) >= Date.now() - 7 * 86400000 && Date.parse(f.added) <= Date.now());
-  const rows = [
-    ['Continue watching', continueFilms(groups, progress)], ['New this week', recent],
-    ...PRODUCTS.map(product => [product, groups.filter(f => f.variants.some(v => v.product === product))]),
-    ['Ads & loops', filterFilms(groups, 'Ads')], ['Demos', filterFilms(groups, 'Demos')], ['Arabic', filterFilms(groups, 'Arabic')],
-  ];
   screen = 'library';
-  mount('library', `${header()}<nav class="filters" aria-label="Filter films">${filters.map(f => `<button class="filter-chip" data-filter="${f}" aria-pressed="${activeFilter === f}">${f}</button>`).join('')}</nav>${searching ? `<div class="search-bar"><label class="sr-only" for="film-search">Search films</label>${icon('search')}<input id="film-search" type="search" placeholder="Titles, products, and cuts" value="${escape(query)}" autocomplete="off"><button class="icon-button" data-action="close-search" aria-label="Close search">${icon('close')}</button></div>` : ''}${filtered ? `<section class="results"><div class="results-head"><div><p class="eyebrow">YOUR COLLECTION</p><h1>${query.trim() ? 'Search results' : escape(activeFilter)}</h1><p class="results-count" role="status">${matches.length} ${matches.length === 1 ? 'title' : 'titles'}</p></div><button class="text-button" data-action="clear-filter">Clear filters</button></div><div class="results-grid">${matches.map(f => card(f, progress)).join('')}</div>${!matches.length ? '<p class="no-results">No films match. Try another title or clear the filters.</p>' : ''}</section>` : `<section class="billboard" aria-label="Newest film">${poster(featured, 'billboard-poster')}<div class="billboard-shade"></div><div class="billboard-copy"><p class="eyebrow">YOUR PRIVATE CINEMA</p>${title(featured, 'h1')}<p class="hero-meta"><span class="new-badge">NEW</span><span>${duration(featured.seconds)}</span><span>${escape(featured.product)}</span><span>${escape(featured.kind)}</span></p><p class="blurb">${escape(featured.blurb)}</p><div class="billboard-actions"><button class="primary" data-action="hero-play" data-id="${escape(featured.id)}">${icon('play')}Play</button><button class="secondary" data-action="hero-info" data-id="${escape(featured.id)}">${icon('info')}More info</button></div></div></section><div class="shelves">${rows.map(([name, films]) => shelf(name, films, progress)).join('')}</div>`}<footer>${groups.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`, { focus: false });
-  main.querySelector('.filters').scrollLeft = filterScroll;
+  mount('library', tab === 'new' ? feedView(all) : tab === 'list' ? listView(all, progress) : browseView(all, progress), { focus: false });
+  const chips = main.querySelector('.filters'); if (chips) chips.scrollLeft = filterScroll;
+  enhance();
+}
+// Starts the motion that belongs to the screen that was just drawn.
+function enhance() {
+  live.rows = mountRows(main);
+  const billboard = main.querySelector('.billboard');
+  main.classList.toggle('has-billboard', Boolean(billboard));
+  const featured = billboard && findFilm(billboard.dataset.film);
+  if (featured) live.billboard = mountBillboard(billboard, { ...source(featured), enabled: motionOn, icon });
+  if (main.querySelector('.hot-feed')) live.feed = mountFeed(main, { source: id => source(findFilm(id), 'desktop'), enabled: motionOn });
+}
+function browseView(all, progress) {
+  const home = tab === 'home';
+  const base = home ? all : filterFilms(all, kindTabs[tab][0]);
+  const recent = base.filter(isNew);
+  const rows = [
+    ['Continue watching', continueFilms(base, progress)], ['New this week', recent],
+    ...PRODUCTS.map(product => [product, base.filter(f => f.variants.some(v => v.product === product))]),
+    ...(home ? [['Ads & loops', filterFilms(base, 'Ads')], ['Demos', filterFilms(base, 'Demos')]] : []), ['Arabic', filterFilms(base, 'Arabic')],
+  ];
+  rowFilms = new Map(rows);
+  const filtered = gridMode || activeFilter !== 'All' || query.trim() || exploreRow;
+  const matches = exploreRow ? rowFilms.get(exploreRow) || [] : filterFilms(base, activeFilter, query);
+  const heading = exploreRow || (query.trim() ? 'Search results' : activeFilter !== 'All' ? activeFilter : home ? 'All titles' : kindTabs[tab][0]);
+  const chips = home ? `<nav class="filters" aria-label="Filter films">${filters.map(f => `<button class="filter-chip" data-filter="${f}" aria-pressed="${activeFilter === f}">${f}</button>`).join('')}</nav>` : '';
+  const search = searching ? `<div class="search-bar"><label class="sr-only" for="film-search">Search films</label>${icon('search')}<input id="film-search" type="search" placeholder="Titles, products, and cuts" value="${escape(query)}" autocomplete="off"><button class="icon-button" data-action="close-search" aria-label="Close search">${icon('close')}</button></div>` : '';
+  const featured = base[0];
+  const body = filtered ? `<section class="results"><div class="results-head"><div><p class="eyebrow">YOUR COLLECTION</p><h1>${escape(heading)}</h1><p class="results-count" role="status">${matches.length} ${matches.length === 1 ? 'title' : 'titles'}</p></div><button class="text-button" data-action="clear-filter">Clear filters</button></div><div class="results-grid">${matches.map(f => card(f, progress)).join('')}</div>${!matches.length ? '<p class="no-results">No films match. Try another title or clear the filters.</p>' : ''}</section>`
+    : !featured ? `<section class="results"><div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Nothing here yet</h2><p>Films of this kind will appear when they are added.</p><button class="secondary" data-tab="home">Browse everything</button></div></section>`
+    : `<section class="billboard" aria-label="${home ? 'Newest film' : 'Featured film'}" data-film="${escape(featured.id)}" data-preview="poster">${poster(featured, 'billboard-poster')}<video class="billboard-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="billboard-shade"></div><div class="billboard-copy"><p class="eyebrow">${home ? 'YOUR PRIVATE CINEMA' : kindTabs[tab][1]}</p>${title(featured, 'h1')}<p class="hero-meta"><span class="new-badge">NEW</span><span>${duration(featured.seconds)}</span><span>${escape(featured.product)}</span><span>${escape(featured.kind)}</span></p><div class="blurb-wrap"><p class="blurb">${escape(featured.blurb)}</p></div><div class="billboard-actions"><button class="primary" data-action="hero-play" data-id="${escape(featured.id)}">${icon('play')}Play</button><button class="secondary" data-action="hero-info" data-id="${escape(featured.id)}">${icon('info')}More info</button></div></div><button class="icon-button billboard-tool" data-action="billboard-tool" aria-label="Unmute" hidden>${icon('mute')}</button></section><div class="shelves">${rows.map(([name, films]) => shelf(name, films, progress)).join('')}</div>`;
+  return `${chips}${search}${body}<footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
+}
+function feedView(all) {
+  const shown = all.slice(0, 24); // newest first; a long library does not become an endless feed
+  const item = f => `<article class="hot-item" data-film="${escape(f.id)}" aria-label="${escape(f.title)}"><div class="hot-stage">${poster(f, 'hot-poster')}<video class="hot-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="hot-shade"></div><i class="hot-bar" aria-hidden="true"></i></div><div class="hot-copy"><p class="hot-date">${isNew(f) ? '<span class="new-badge">NEW</span>' : ''}${Date.parse(f.added) ? `<time datetime="${escape(f.added)}">${formatDate(f.added)}</time>` : 'Date unavailable'}</p>${title(f, 'h2', 'hot-name')}<p class="blurb">${escape(f.blurb)}</p><div class="hot-actions"><button class="primary hot-play" data-play-film="${escape(f.id)}" aria-label="Play ${escape(f.title)}">${icon('play')}Play</button>${listButton(f)}<button class="icon-button round" data-film="${escape(f.id)}" aria-label="More info: ${escape(f.title)}">${icon('info')}</button></div></div></article>`;
+  return `<section class="hot" aria-label="New and Hot"><h1 class="hot-title">New &amp; Hot</h1><div class="hot-feed">${shown.map(item).join('')}</div><div class="hot-rail" aria-hidden="true">${shown.length <= 10 ? shown.map(() => '<i></i>').join('') : ''}<b class="hot-rail-count"></b></div></section><footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
+}
+function listView(all, progress) {
+  const items = listGroups(all, listIds);
+  return `<section class="results list-view" aria-label="My List"><div class="results-head"><div><p class="eyebrow">YOUR COLLECTION</p><h1>My List</h1><p class="results-count" role="status">${items.length} ${items.length === 1 ? 'title' : 'titles'}</p></div></div>${items.length ? `<div class="results-grid">${items.map(f => card(f, progress)).join('')}</div>` : `<div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Your list is empty</h2><p>Tap + on any film to keep it here.</p><button class="secondary" data-tab="home">Browse films</button></div>`}</section><footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
 }
 function card(f, progress = {}) {
   const id = f.resumeFilmId || f.id, saved = progress[id];
-  return `<article class="card"><button class="film-card" data-film="${escape(id)}" aria-label="More info: ${escape(f.title)}">${poster(f)}<span class="card-title film-title" dir="auto">${escape(f.title)}</span>${f.variants.length > 1 ? `<span class="cut-count">${f.variants.length} cuts</span>` : ''}</button><div class="card-hover"><button class="icon-button card-play" data-play-film="${escape(id)}" aria-label="Play ${escape(f.title)}">${icon('play')}</button><span>${duration(f.seconds)}<br>${escape(f.product)}</span></div>${f.resumeFilmId && saved ? `<progress class="watch-progress" value="${saved.time}" max="${saved.duration}" aria-label="Watch progress for ${escape(f.title)}"></progress>` : ''}</article>`;
+  return `<article class="card"><button class="film-card" data-film="${escape(id)}" aria-label="More info: ${escape(f.title)}">${poster(f)}<span class="card-title film-title" dir="auto">${escape(f.title)}</span>${f.variants.length > 1 ? `<span class="cut-count">${f.variants.length} cuts</span>` : ''}</button>${f.resumeFilmId && saved ? `<progress class="watch-progress" value="${saved.time}" max="${saved.duration}" aria-label="Watch progress for ${escape(f.title)}"></progress>` : ''}</article>`;
 }
 function shelf(name, films, progress = {}) {
-  return films.length ? `<section class="shelf" aria-label="${escape(name)}"><div class="shelf-heading"><h2>${escape(name)}</h2><span>${films.length} ${films.length === 1 ? 'title' : 'titles'}</span></div><div class="card-track">${films.map(f => card(f, progress)).join('')}</div></section>` : '';
+  return films.length ? `<section class="shelf" aria-label="${escape(name)}" data-row="${escape(name)}"><div class="shelf-heading"><h2>${escape(name)}</h2><button class="explore" data-action="explore" data-row="${escape(name)}" aria-label="Explore all: ${escape(name)}"><span>Explore all</span>${icon('arrow')}</button><span class="shelf-count">${films.length} ${films.length === 1 ? 'title' : 'titles'}</span><span class="row-dashes" aria-hidden="true"></span></div><div class="row-viewport"><div class="card-track">${films.map(f => card(f, progress)).join('')}</div><button class="paddle paddle-prev" aria-label="Previous titles: ${escape(name)}" disabled>${icon('back')}</button><button class="paddle paddle-next" aria-label="Next titles: ${escape(name)}">${icon('arrow')}</button></div></section>` : '';
 }
-function chooseFilm(id, directPlay = false) {
-  if (screen !== 'film') detailOpener = document.activeElement;
+function chooseFilm(id, directPlay = false, origin) {
+  if (screen !== 'film') { detailOpener = origin instanceof Element ? origin : document.activeElement; detailOrigin = { el: origin instanceof Element ? origin : null, id }; }
   film = catalog.films.find(f => f.id === id);
   if (!film) return;
   version = film.versions.find(v => v.kind === (matchMedia('(min-width: 900px)').matches ? 'desktop' : 'phone')) || film.versions[0];
-  if (directPlay) void play(); else filmPage();
+  if (directPlay) void play(); else filmPage(origin);
 }
-function versionChoices(tiles = true) {
-  return `<div class="version-choices ${tiles ? 'tiles' : 'chips'}" role="group" aria-label="Film version">${film.versions.map(v=>`<button class="version ${v===version ? 'selected' : ''}" data-version="${v.kind}" aria-pressed="${v===version}">${tiles ? poster(film) : ''}<span>${icon(v.kind)}${kindName(v.kind)} ${v.kind==='phone'?'9:16':'16:9'}</span>${v===version && tiles ? `<span class="selected-mark">${icon('check')}</span>`:''}</button>`).join('')}</div>`;
+function versionList() {
+  return `<section class="episodes" aria-label="Versions"><h2>Versions</h2><div class="episode-list" role="group" aria-label="Film version"><ol>${film.versions.map((v, index) => `<li><button class="episode ${v === version ? 'selected' : ''}" data-version="${v.kind}" aria-pressed="${v === version}"><span class="ep-n">${index + 1}</span>${poster(film, 'ep-poster')}<span class="ep-copy"><strong>${icon(v.kind)}${kindName(v.kind)} ${v.kind === 'phone' ? '9:16' : '16:9'}</strong><small>${duration(film.seconds)} · ${v.w}×${v.h}</small></span>${v === version ? `<span class="ep-check">${icon('check')}</span>` : ''}</button></li>`).join('')}</ol></div></section>`;
 }
-function filmPage() {
+function filmPage(origin) {
   savedFile = undefined;
   if (!main.classList.contains('library')) library();
-  main.querySelector('#film-detail')?.remove();
-  const group = groupFilms(catalog.films).find(g => g.variants.some(v => v.id === film.id));
+  const all = groupsOf();
+  const group = all.find(g => g.variants.some(v => v.id === film.id));
   const selected = group.variants.find(v => v.id === film.id);
-  const related = groupFilms(catalog.films).filter(g => g.id !== group.id && g.product === selected.product);
+  const related = all.filter(g => g.id !== group.id && g.product === selected.product);
   let release = '';
   try { const url = new URL(film.release); if (url.protocol === 'https:') release = `<a class="release-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">View release ${icon('arrow')}</a>`; } catch { /* Old catalogs can omit a release link. */ }
-  main.insertAdjacentHTML('beforeend', `<dialog id="film-detail" aria-labelledby="detail-title"><button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><div class="detail-art">${poster(film, 'detail-poster')}</div><div class="detail-body"><h1 id="detail-title" class="film-title" dir="auto">${escape(film.title)}</h1><p class="detail-meta">${duration(film.seconds)} · ${escape(selected.product)} · ${escape(selected.kind)}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="primary" data-action="play">${icon('play')}Play</button><button class="secondary" data-action="save">${icon('download')}Save to phone</button></div>${group.variants.length > 1 ? `<div class="variant-choices" role="group" aria-label="Film cut">${group.variants.map(v => `<button class="variant filter-chip" data-variant="${escape(v.id)}" aria-pressed="${v.id === film.id}">${escape(v.variant || v.title)}</button>`).join('')}</div>` : ''}${versionChoices(false)}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${shelf('More like this', related)}</div></dialog>`);
+  const cuts = group.variants.length > 1 ? `<section class="episodes" aria-label="Cuts"><h2>Cuts</h2><div class="episode-list" role="group" aria-label="Film cut"><ol>${group.variants.map((v, index) => `<li><button class="episode variant ${v.id === film.id ? 'selected' : ''}" data-variant="${escape(v.id)}" aria-pressed="${v.id === film.id}"><span class="ep-n">${index + 1}</span>${poster(v, 'ep-poster')}<span class="ep-copy"><strong dir="auto">${escape(v.variant || v.title)}</strong><small>${duration(v.seconds)} · ${escape(v.added || 'Date unavailable')}</small></span>${v.id === film.id ? `<span class="ep-check">${icon('check')}</span>` : ''}</button></li>`).join('')}</ol></div></section>` : '';
+  const html = `<button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><span class="sheet-handle" aria-hidden="true"></span><div class="detail-art">${poster(film, 'detail-poster')}<video class="detail-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="detail-shade"></div><div class="detail-hero"><h1 id="detail-title" class="film-title" dir="auto">${escape(film.title)}</h1><div class="detail-buttons"><button class="primary detail-play" data-action="play">${icon('play')}Play</button>${listButton(film, 'detail-list')}<button class="icon-button round detail-mute" data-action="detail-mute" aria-label="Unmute" hidden>${icon('mute')}</button></div></div></div><div class="detail-body"><p class="detail-meta">${isNew(selected) ? '<span class="new-badge">NEW</span>' : ''}<span>${duration(film.seconds)}</span><span>${escape(selected.product)}</span><span>${escape(selected.kind)}</span>${selected.lang === 'ar' ? '<span>Arabic</span>' : ''}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="secondary" data-action="save">${icon('download')}Save to phone</button></div>${cuts}${versionList()}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${related.length ? `<section class="shelf more-like" aria-label="More like this"><div class="shelf-heading"><h2>More like this</h2></div><div class="more-grid">${related.map(f => card(f)).join('')}</div></section>` : ''}</div>`;
+  let detail = main.querySelector('#film-detail'), settled = Promise.resolve();
+  if (detail) { live.modal?.stop(); detail.innerHTML = html; detail.scrollTop = 0; }
+  else {
+    main.insertAdjacentHTML('beforeend', `<dialog id="film-detail" aria-labelledby="detail-title">${html}</dialog>`);
+    detail = main.querySelector('#film-detail');
+    detail.addEventListener('cancel', event => { event.preventDefault(); void closeDetail(); });
+    detail.addEventListener('click', event => {
+      if (event.target !== detail) return;
+      const box = detail.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) void closeDetail();
+    });
+    enableDrag(detail, from => void closeDetail(from));
+    detail.showModal();
+    live.billboard?.hold(true); live.feed?.hold(true);
+    // Measured after showModal: the page lost its scrollbar, which can shift the card a few pixels.
+    settled = openSheet(detail, { origin: origin instanceof Element ? origin.getBoundingClientRect() : origin, phone: !desktopQuery.matches });
+  }
   screen = 'film';
-  const detail = main.querySelector('#film-detail');
-  detail.addEventListener('cancel', event => { event.preventDefault(); closeDetail(); });
-  detail.showModal();
   void fillPosters(revision);
+  modalPreview(detail, settled);
 }
-function closeDetail() {
-  main.querySelector('#film-detail')?.close();
-  main.querySelector('#film-detail')?.remove();
+function modalPreview(detail, settled) {
+  const video = detail.querySelector('.detail-video'), art = detail.querySelector('.detail-art'), mute = detail.querySelector('.detail-mute');
+  const { getURL, canDownload } = source(film, 'desktop');
+  let preview, release, dead = !motionOn();
+  const pauseHidden = () => { if (document.hidden) video.pause(); else if (!dead && art.classList.contains('is-playing')) video.play().catch(() => {}); };
+  const stop = () => { dead = true; preview?.stop(); release?.(); art.classList.remove('is-playing'); mute.hidden = true; document.removeEventListener('visibilitychange', pauseHidden); };
+  document.addEventListener('visibilitychange', pauseHidden);
+  live.modal = { stop, sync() { if (!motionOn()) stop(); } };
+  settled.then(() => {
+    if (dead || !detail.isConnected) return;
+    release = claimPreview({ stop });
+    preview = startPreview(video, { getURL, canDownload, onPlaying() { art.classList.add('is-playing'); mute.hidden = false; }, onEnded() { art.classList.remove('is-playing'); }, onFail: stop });
+  });
+}
+function originRect() {
+  const el = detailOrigin?.el?.isConnected ? detailOrigin.el : detailOrigin && main.querySelector(`.film-card[data-film="${CSS.escape(detailOrigin.id)}"]`);
+  const box = el?.getBoundingClientRect();
+  return box && box.width > 0 && box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth ? box : null;
+}
+async function closeDetail(from = 0) {
+  const detail = main.querySelector('#film-detail');
+  if (!detail || detail.dataset.closing) return;
+  detail.dataset.closing = 'true'; detail.inert = true;
+  live.modal?.stop();
+  await closeSheet(detail, { target: originRect(), phone: !desktopQuery.matches, from });
+  if (!detail.isConnected) return;
+  detail.close(); detail.remove();
   screen = 'library';
-  if (detailOpener?.isConnected) detailOpener.focus({ preventScroll: true });
+  live.billboard?.hold(false); live.feed?.hold(false);
+  const card = detailOrigin && main.querySelector(`.film-card[data-film="${CSS.escape(detailOrigin.id)}"]`);
+  const back = detailOpener?.isConnected && detailOpener !== document.body ? detailOpener : card;
+  if (back) back.focus({ preventScroll: true });
   else main.querySelector('[data-action="hero-info"], .film-card, [data-action="clear-filter"]')?.focus({ preventScroll: true });
+  if (listDirty) { listDirty = false; library(); }
 }
 function persistPlayback() {
   const video = main.querySelector('video');
-  if (video && film && video.readyState >= 1) saveProgress(storage, film.id, video.currentTime, video.duration, progressKey);
+  if (screen === 'player' && video && film && video.readyState >= 1) saveProgress(storage, film.id, video.currentTime, video.duration, progressKey);
 }
 const messages = {
   offline: ['You’re offline', 'Connect to the internet.<br>Then try your library again.', 'offline'],
@@ -274,24 +492,31 @@ main.addEventListener('submit',async event=>{
   try { localStorage.setItem('mkc.token',value); token=value; } catch { connect('Browser storage is blocked. Enable storage for this site.'); return; }
   await loadLibrary();
 });
-main.addEventListener('click',async event=>{
+async function onClick(event) {
+  // A tap on the picture of a New & Hot film opens its details, like the info button.
+  const stage = event.target.closest('.hot-stage');
+  if (stage && !event.target.closest('button') && main.contains(stage)) { chooseFilm(stage.closest('.hot-item').dataset.film, false, stage); return; }
   const button=event.target.closest('button'); if(!button) return;
+  if(button.dataset.tab) { go(button.dataset.tab); return; }
   if(button.dataset.playFilm) { chooseFilm(button.dataset.playFilm, true); return; }
   if(button.dataset.filter) { activeFilter=button.dataset.filter; gridMode=true; library(); main.querySelector(`[data-filter="${activeFilter}"]`)?.focus({preventScroll:true}); return; }
   if(button.dataset.variant) { chooseFilm(button.dataset.variant); [...main.querySelectorAll('[data-variant]')].find(el => el.dataset.variant === film.id)?.focus(); return; }
-  if(button.dataset.film) { chooseFilm(button.dataset.film); return; }
+  if(button.dataset.film) { chooseFilm(button.dataset.film, false, button); return; }
   if(button.dataset.version) { version=film.versions.find(v=>v.kind===button.dataset.version); filmPage(); main.querySelector(`[data-version="${version.kind}"]`)?.focus(); return; }
   switch(button.dataset.action) {
     case 'hero-play': chooseFilm(button.dataset.id, true); break;
-    case 'hero-info': chooseFilm(button.dataset.id); break;
-    case 'close-detail': closeDetail(); break;
-    case 'search': searching=true; gridMode=true; library(); main.querySelector('#film-search').focus(); break;
-    case 'close-search': searching=false; query=''; gridMode=activeFilter!=='All'; library(); main.querySelector('[data-action="search"]').focus(); break;
-    case 'clear-filter': activeFilter='All'; query=''; searching=false; gridMode=false; library(); main.querySelector('.filters').scrollLeft=0; main.querySelector('[data-filter="All"]').focus({preventScroll:true}); break;
+    case 'hero-info': chooseFilm(button.dataset.id, false, button); break;
+    case 'close-detail': void closeDetail(); break;
+    case 'toggle-list': toggleMyList(button.dataset.id); break;
+    case 'detail-mute': { const video=main.querySelector('.detail-video'); video.muted=!video.muted; button.setAttribute('aria-label',video.muted?'Unmute':'Mute'); button.setAttribute('aria-pressed',String(!video.muted)); button.innerHTML=icon(video.muted?'mute':'sound'); break; }
+    case 'explore': exploreRow=button.dataset.row; gridMode=true; library(); main.querySelector('[data-action="clear-filter"]')?.focus({preventScroll:true}); break;
+    case 'search': if(screen!=='library') break; if(tab!=='home') { tab='home'; activeFilter='All'; exploreRow=null; } searching=true; gridMode=true; library(); main.querySelector('#film-search').focus(); break;
+    case 'close-search': searching=false; query=''; gridMode=activeFilter!=='All'; library(); main.querySelector('[data-action="search"]')?.focus() || document.querySelector('[data-action="search"]')?.focus(); break;
+    case 'clear-filter': activeFilter='All'; query=''; searching=false; gridMode=false; exploreRow=null; library(); main.querySelector('.filters') && (main.querySelector('.filters').scrollLeft=0); main.querySelector('[data-filter="All"]')?.focus({preventScroll:true}); break;
     case 'back': screen==='film' ? library() : filmPage(); break;
     case 'retry': await loadLibrary(); break;
     case 'connect': connect(); break;
-    case 'settings': settings.showModal(); break;
+    case 'settings': syncAutoplay(); settings.showModal(); break;
     case 'play': await play(); break;
     case 'save': await save(); break;
     case 'cancel-save': filmPage(); break;
@@ -306,13 +531,30 @@ main.addEventListener('click',async event=>{
       try { if(document.fullscreenElement) await document.exitFullscreen(); else if(main.requestFullscreen) await main.requestFullscreen(); else if(video.webkitEnterFullscreen) video.webkitEnterFullscreen(); } catch { main.querySelector('.player-status').textContent='Full screen is not available on this device.'; } break;
     }
   }
-});
+}
+[main, topbar, tabbar].forEach(el => el.addEventListener('click', onClick));
 main.addEventListener('input', event => {
   if(event.target.id !== 'film-search') return;
   const caret = event.target.selectionStart;
   query = event.target.value; library();
   const input = main.querySelector('#film-search'); input.focus(); input.setSelectionRange(caret, caret);
 });
+const bob = createBob({
+  host: main, find: findFilm, posterURL: f => posterURLs.get(f.poster) || '', source: f => source(f, 'desktop'),
+  enabled: () => screen === 'library' && !reduced(), autoplay: motionOn, listed: f => inList(listIds, titleIds(f.id)),
+  actions: { play: id => chooseFilm(id, true), info: (id, origin) => chooseFilm(id, false, origin), toggle: toggleMyList },
+  icon, esc: escape, duration, isNew, topOffset: () => topbar.getBoundingClientRect().bottom,
+});
+// The Autoplay previews switch in Settings; reduced motion turns every preview off whatever the switch says.
+const autoplayToggle = document.querySelector('#autoplay-toggle');
+function syncAutoplay() {
+  autoplayToggle.checked = autoplay && !reduced(); autoplayToggle.disabled = reduced();
+  document.querySelector('#autoplay-note').textContent = reduced() ? 'Off because this device asks for reduced motion.' : 'Muted previews on the home, on cards and in More info.';
+  live.billboard?.sync(); live.feed?.sync(); live.modal?.sync(); bob.sync();
+}
+autoplayToggle.addEventListener('change', () => { autoplay = autoplayToggle.checked; writeAutoplay(storage, autoplay); syncAutoplay(); });
+onReducedChange(syncAutoplay);
+syncAutoplay();
 window.addEventListener('pagehide', persistPlayback);
 document.addEventListener('visibilitychange', () => { if(document.hidden) persistPlayback(); });
 document.querySelector('[data-close-settings]').addEventListener('click',()=>settings.close());
@@ -320,7 +562,7 @@ document.querySelector('#forget-token').addEventListener('click',async()=>{
   try {
     operation.abort();
     if(!demo) localStorage.removeItem('mkc.token'); token='';
-    await forgetPosters(); clearPosters(); catalog=undefined; film=undefined; savedFile=undefined;
+    await forgetPosters(); clearPosters(); clearPreviews(); catalog=undefined; film=undefined; savedFile=undefined;
     settings.close(); connect();
   } catch { document.querySelector('#settings-status').textContent='Could not clear browser storage. Try again.'; }
 });

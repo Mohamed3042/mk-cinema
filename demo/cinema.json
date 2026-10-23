@@ -12,24 +12,24 @@
       "blurb": "A film called Golden Hour.",
       "title": "Golden Hour",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-22",
       "poster": "demo/posters/golden-hour.jpg",
       "posterShape": "9:16",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/golden-hour-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 156041
         },
         {
           "kind": "desktop",
-          "file": "demo/video-desktop.mp4",
-          "w": 320,
-          "h": 180,
-          "bytes": 9630
+          "file": "demo/golden-hour-desktop.mp4",
+          "w": 640,
+          "h": 360,
+          "bytes": 113111
         }
       ],
       "release": "https://example.com/films/golden-hour"
@@ -42,24 +42,24 @@
       "blurb": "An Arabic demo called Light Journey.",
       "title": "رحلة الضوء",
       "dir": "rtl",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-21",
       "poster": "demo/posters/light-journey.jpg",
       "posterShape": "16:9",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/light-journey-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 168156
         },
         {
           "kind": "desktop",
-          "file": "demo/video-desktop.mp4",
-          "w": 320,
-          "h": 180,
-          "bytes": 9630
+          "file": "demo/light-journey-desktop.mp4",
+          "w": 640,
+          "h": 360,
+          "bytes": 167939
         }
       ],
       "release": "demo-light-journey"
@@ -72,17 +72,17 @@
       "blurb": "A three-second ad called Velvet Steps.",
       "title": "Velvet Steps",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-20",
       "poster": "demo/posters/velvet-steps.jpg",
       "posterShape": "9:16",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/velvet-steps-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 166934
         }
       ],
       "release": "demo-velvet-steps"
@@ -95,24 +95,24 @@
       "blurb": "A film called The Amber Room.",
       "title": "The Amber Room",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-19",
       "poster": "demo/posters/amber-room.jpg",
       "posterShape": "16:9",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/amber-room-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 167864
         },
         {
           "kind": "desktop",
-          "file": "demo/video-desktop.mp4",
-          "w": 320,
-          "h": 180,
-          "bytes": 9630
+          "file": "demo/amber-room-desktop.mp4",
+          "w": 640,
+          "h": 360,
+          "bytes": 151917
         }
       ],
       "release": "demo-amber-room"
@@ -125,24 +125,24 @@
       "blurb": "A three-second loop called A Quiet City.",
       "title": "A Quiet City",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-18",
       "poster": "demo/posters/quiet-city.jpg",
       "posterShape": "16:9",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/quiet-city-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 169610
         },
         {
           "kind": "desktop",
-          "file": "demo/video-desktop.mp4",
-          "w": 320,
-          "h": 180,
-          "bytes": 9630
+          "file": "demo/quiet-city-desktop.mp4",
+          "w": 640,
+          "h": 360,
+          "bytes": 167651
         }
       ],
       "release": "demo-quiet-city"
@@ -155,24 +155,24 @@
       "blurb": "A teaser called Last Light.",
       "title": "Last Light",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-17",
       "poster": "demo/posters/last-light.jpg",
       "posterShape": "9:16",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/last-light-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 165179
         },
         {
           "kind": "desktop",
-          "file": "demo/video-desktop.mp4",
-          "w": 320,
-          "h": 180,
-          "bytes": 9630
+          "file": "demo/last-light-desktop.mp4",
+          "w": 640,
+          "h": 360,
+          "bytes": 111751
         }
       ],
       "release": "demo-last-light"
@@ -185,24 +185,24 @@
       "blurb": "A reel called Paper Moon Passage.",
       "title": "Paper Moon Passage",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-16",
       "poster": "demo/posters/paper-moon.jpg",
       "posterShape": "16:9",
       "versions": [
         {
           "kind": "phone",
-          "file": "demo/video-phone.mp4",
-          "w": 180,
-          "h": 320,
-          "bytes": 8056
+          "file": "demo/paper-moon-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 168468
         },
         {
           "kind": "desktop",
-          "file": "demo/video-desktop.mp4",
-          "w": 320,
-          "h": 180,
-          "bytes": 9630
+          "file": "demo/paper-moon-desktop.mp4",
+          "w": 640,
+          "h": 360,
+          "bytes": 152839
         }
       ],
       "release": "demo-paper-moon"
@@ -211,12 +211,18 @@
       "id": "golden-hour-v1",
       "title": "Golden Hour — V1",
       "dir": "ltr",
-      "seconds": 3,
+      "seconds": 12,
       "added": "2026-10-15",
       "poster": "demo/posters/golden-hour.jpg",
       "posterShape": "9:16",
       "versions": [
-        { "kind": "phone", "file": "demo/video-phone.mp4", "w": 180, "h": 320, "bytes": 8056 }
+        {
+          "kind": "phone",
+          "file": "demo/golden-hour-phone.mp4",
+          "w": 360,
+          "h": 640,
+          "bytes": 156041
+        }
       ],
       "release": "demo-golden-hour-v1",
       "product": "MK Voice",
