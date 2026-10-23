@@ -1,4 +1,5 @@
 import { CinemaError, getCatalog, getPoster, getVideoURL, downloadVideo, forgetPosters } from './api.js';
+import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms } from './catalog.js';
 
 const main = document.querySelector('main');
 const settings = document.querySelector('#settings');
@@ -8,10 +9,16 @@ let token = '';
 try { if (!demo) token = localStorage.getItem('mkc.token') || ''; } catch { /* The connect form explains storage failures. */ }
 let catalog, film, version, screen, revision = 0, operation = new AbortController();
 let savedFile, mediaURL, posterURLs = new Map();
+let activeFilter = 'All', query = '', searching = false, gridMode = false, detailOpener;
+let storage;
+try { storage = localStorage; } catch { /* Watching also works with storage blocked. */ }
+const progressKey = demo ? 'mkc.demo.progress' : 'mkc.progress';
+const filters = ['All', 'MK Voice', 'Business OS', 'Talent Atlas', 'Job Orbit', 'Suite & apps', 'More', 'Ads', 'Demos', 'Arabic'];
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const duration = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const kindName = kind => kind === 'phone' ? 'Phone' : 'Desktop';
 const iconPaths = {
+  search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>',
   back: '<path d="m15 4-8 8 8 8"/>', play: '<path d="m8 4 12 8-12 8Z" fill="currentColor" stroke="none"/>',
   pause: '<path d="M8 5v14M16 5v14" stroke-width="4"/>', phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
   desktop: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4M7 21h10"/>',
@@ -28,9 +35,10 @@ const badges = f => `<div class="badges">${f.versions.map(v => `<span class="bad
 const poster = (f, cls = '') => `<img class="poster ${cls}" data-poster="${escape(f.id)}" alt="" width="640" height="800">`;
 const brand = '<span class="wordmark">MK <span>Cinema</span></span>';
 function header(back = false) {
-  return `<header class="header ${back ? 'compact' : ''}">${back ? `<button class="icon-button" data-action="back" aria-label="Back to ${screen === 'film' ? 'library' : 'film'}">${icon('back')}</button>` : ''}<div class="brand">${brand}${!back ? '<span class="owner">MK’S PRIVATE COLLECTION</span>' : ''}</div>${!back ? `<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button>` : ''}</header>`;
+  return `<header class="header ${back ? 'compact' : ''}">${back ? `<button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button>` : ''}<div class="brand">${brand}</div>${!back ? `<div class="header-actions">${screen === 'library' ? `<button class="icon-button" data-action="search" aria-label="Search" aria-expanded="${searching}">${icon('search')}</button>` : ''}<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div>` : ''}</header>`;
 }
 function mount(next, html, { focus = true } = {}) {
+  persistPlayback();
   operation.abort(); operation = new AbortController(); revision++;
   const oldVideo = main.querySelector('video');
   if (oldVideo) { oldVideo.pause(); oldVideo.removeAttribute('src'); oldVideo.load(); }
@@ -84,22 +92,64 @@ async function loadLibrary() {
 function library() {
   savedFile = undefined;
   if (!catalog?.films.length) { stateScreen('empty'); return; }
-  const featured = catalog.films[0];
+  const filterScroll = main.querySelector('.filters')?.scrollLeft || 0;
+  const groups = groupFilms(catalog.films), featured = groups[0];
+  const progress = readProgress(storage, progressKey);
+  const matches = filterFilms(groups, activeFilter, query);
+  const filtered = gridMode || activeFilter !== 'All' || query.trim();
+  const recent = groups.filter(f => Date.parse(f.added) >= Date.now() - 7 * 86400000 && Date.parse(f.added) <= Date.now());
+  const rows = [
+    ['Continue watching', continueFilms(groups, progress)], ['New this week', recent],
+    ...PRODUCTS.map(product => [product, groups.filter(f => f.variants.some(v => v.product === product))]),
+    ['Ads & loops', filterFilms(groups, 'Ads')], ['Demos', filterFilms(groups, 'Demos')], ['Arabic', filterFilms(groups, 'Arabic')],
+  ];
   screen = 'library';
-  mount('library', `${header()}<div class="programme"><section class="feature"><div class="issue" aria-hidden="true">PRIVATE SCREENING</div>${poster(featured,'feature-poster')}<div class="feature-copy"><p class="eyebrow">NEW DROP</p>${title(featured,'h1')}<p class="runtime">${duration(featured.seconds)}</p>${badges(featured)}<button class="primary watch" data-film="${escape(featured.id)}">${icon('play')}Watch film</button></div></section><section class="collection"><div class="collection-head"><h2>All films</h2><span>${catalog.films.length} FILMS</span></div><div class="film-list">${catalog.films.map((f,i)=>`<button class="film-row" data-film="${escape(f.id)}">${poster(f)}<span class="row-copy">${i===0 ? '<span class="new-badge">NEW</span>' : ''}<span dir="auto" class="film-title">${escape(f.title)}</span><span class="row-meta"><span class="runtime">${duration(f.seconds)}</span>${badges(f)}</span></span>${icon('arrow')}</button>`).join('')}</div></section></div><footer>Library${demo ? ' · Demo collection' : ''}</footer>`);
+  mount('library', `${header()}<nav class="filters" aria-label="Filter films">${filters.map(f => `<button class="filter-chip" data-filter="${f}" aria-pressed="${activeFilter === f}">${f}</button>`).join('')}</nav>${searching ? `<div class="search-bar"><label class="sr-only" for="film-search">Search films</label>${icon('search')}<input id="film-search" type="search" placeholder="Titles, products, and cuts" value="${escape(query)}" autocomplete="off"><button class="icon-button" data-action="close-search" aria-label="Close search">${icon('close')}</button></div>` : ''}${filtered ? `<section class="results"><div class="results-head"><div><p class="eyebrow">YOUR COLLECTION</p><h1>${query.trim() ? 'Search results' : escape(activeFilter)}</h1><p class="results-count" role="status">${matches.length} ${matches.length === 1 ? 'title' : 'titles'}</p></div><button class="text-button" data-action="clear-filter">Clear filters</button></div><div class="results-grid">${matches.map(f => card(f, progress)).join('')}</div>${!matches.length ? '<p class="no-results">No films match. Try another title or clear the filters.</p>' : ''}</section>` : `<section class="billboard" aria-label="Newest film">${poster(featured, 'billboard-poster')}<div class="billboard-shade"></div><div class="billboard-copy"><p class="eyebrow">YOUR PRIVATE CINEMA</p>${title(featured, 'h1')}<p class="hero-meta"><span class="new-badge">NEW</span><span>${duration(featured.seconds)}</span><span>${escape(featured.product)}</span><span>${escape(featured.kind)}</span></p><p class="blurb">${escape(featured.blurb)}</p><div class="billboard-actions"><button class="primary" data-action="hero-play" data-id="${escape(featured.id)}">${icon('play')}Play</button><button class="secondary" data-action="hero-info" data-id="${escape(featured.id)}">${icon('info')}More info</button></div></div></section><div class="shelves">${rows.map(([name, films]) => shelf(name, films, progress)).join('')}</div>`}<footer>${groups.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`, { focus: false });
+  main.querySelector('.filters').scrollLeft = filterScroll;
 }
-function chooseFilm(id) {
+function card(f, progress = {}) {
+  const id = f.resumeFilmId || f.id, saved = progress[id];
+  return `<article class="card"><button class="film-card" data-film="${escape(id)}" aria-label="More info: ${escape(f.title)}">${poster(f)}<span class="card-title film-title" dir="auto">${escape(f.title)}</span>${f.variants.length > 1 ? `<span class="cut-count">${f.variants.length} cuts</span>` : ''}</button><div class="card-hover"><button class="icon-button card-play" data-play-film="${escape(id)}" aria-label="Play ${escape(f.title)}">${icon('play')}</button><span>${duration(f.seconds)}<br>${escape(f.product)}</span></div>${f.resumeFilmId && saved ? `<progress class="watch-progress" value="${saved.time}" max="${saved.duration}" aria-label="Watch progress for ${escape(f.title)}"></progress>` : ''}</article>`;
+}
+function shelf(name, films, progress = {}) {
+  return films.length ? `<section class="shelf" aria-label="${escape(name)}"><div class="shelf-heading"><h2>${escape(name)}</h2><span>${films.length} ${films.length === 1 ? 'title' : 'titles'}</span></div><div class="card-track">${films.map(f => card(f, progress)).join('')}</div></section>` : '';
+}
+function chooseFilm(id, directPlay = false) {
+  if (screen !== 'film') detailOpener = document.activeElement;
   film = catalog.films.find(f => f.id === id);
   if (!film) return;
   version = film.versions.find(v => v.kind === (matchMedia('(min-width: 900px)').matches ? 'desktop' : 'phone')) || film.versions[0];
-  filmPage();
+  if (directPlay) void play(); else filmPage();
 }
 function versionChoices(tiles = true) {
   return `<div class="version-choices ${tiles ? 'tiles' : 'chips'}" role="group" aria-label="Film version">${film.versions.map(v=>`<button class="version ${v===version ? 'selected' : ''}" data-version="${v.kind}" aria-pressed="${v===version}">${tiles ? poster(film) : ''}<span>${icon(v.kind)}${kindName(v.kind)} ${v.kind==='phone'?'9:16':'16:9'}</span>${v===version && tiles ? `<span class="selected-mark">${icon('check')}</span>`:''}</button>`).join('')}</div>`;
 }
 function filmPage() {
-  savedFile = undefined; screen = 'film';
-  mount('film', `${header(true)}<div class="film-layout">${poster(film,'film-poster')}<section class="film-info">${title(film,'h1')}<p class="runtime">${duration(film.seconds)}</p>${versionChoices()}<div class="film-actions"><button class="primary" data-action="play">${icon('play')}Play</button><button class="secondary" data-action="save">${icon('download')}Save to phone</button></div></section></div>`);
+  savedFile = undefined;
+  if (!main.classList.contains('library')) library();
+  main.querySelector('#film-detail')?.remove();
+  const group = groupFilms(catalog.films).find(g => g.variants.some(v => v.id === film.id));
+  const selected = group.variants.find(v => v.id === film.id);
+  const related = groupFilms(catalog.films).filter(g => g.id !== group.id && g.product === selected.product);
+  let release = '';
+  try { const url = new URL(film.release); if (url.protocol === 'https:') release = `<a class="release-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">View release ${icon('arrow')}</a>`; } catch { /* Old catalogs can omit a release link. */ }
+  main.insertAdjacentHTML('beforeend', `<dialog id="film-detail" aria-labelledby="detail-title"><button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><div class="detail-art">${poster(film, 'detail-poster')}</div><div class="detail-body"><h1 id="detail-title" class="film-title" dir="auto">${escape(film.title)}</h1><p class="detail-meta">${duration(film.seconds)} · ${escape(selected.product)} · ${escape(selected.kind)}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="primary" data-action="play">${icon('play')}Play</button><button class="secondary" data-action="save">${icon('download')}Save to phone</button></div>${group.variants.length > 1 ? `<div class="variant-choices" role="group" aria-label="Film cut">${group.variants.map(v => `<button class="variant filter-chip" data-variant="${escape(v.id)}" aria-pressed="${v.id === film.id}">${escape(v.variant || v.title)}</button>`).join('')}</div>` : ''}${versionChoices(false)}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${shelf('More like this', related)}</div></dialog>`);
+  screen = 'film';
+  const detail = main.querySelector('#film-detail');
+  detail.addEventListener('cancel', event => { event.preventDefault(); closeDetail(); });
+  detail.showModal();
+  void fillPosters(revision);
+}
+function closeDetail() {
+  main.querySelector('#film-detail')?.close();
+  main.querySelector('#film-detail')?.remove();
+  screen = 'library';
+  if (detailOpener?.isConnected) detailOpener.focus({ preventScroll: true });
+  else main.querySelector('[data-action="hero-info"], .film-card, [data-action="clear-filter"]')?.focus({ preventScroll: true });
+}
+function persistPlayback() {
+  const video = main.querySelector('video');
+  if (video && film && video.readyState >= 1) saveProgress(storage, film.id, video.currentTime, video.duration, progressKey);
 }
 const messages = {
   offline: ['You’re offline', 'Connect to the internet.<br>Then try your library again.', 'offline'],
@@ -148,10 +198,11 @@ async function play() {
     catch (error) { if (error.name==='NotAllowedError') { status.textContent='Tap Play to watch.'; } else if (error.name!=='AbortError' && !video.error) throw error; }
     if (stamp === revision) updatePlayButton();
   }
-  video.addEventListener('timeupdate',()=>{ if(stamp!==revision) return; lastTime=video.currentTime; if(recoveryUsed && lastTime>recoveryTime+1) recoveryUsed=false; main.querySelector('#elapsed').textContent=duration(lastTime); main.querySelector('#seek').value=video.duration ? lastTime/video.duration*100 : 0; });
+  video.addEventListener('timeupdate',()=>{ if(stamp!==revision) return; lastTime=video.currentTime; persistPlayback(); if(recoveryUsed && lastTime>recoveryTime+1) recoveryUsed=false; main.querySelector('#elapsed').textContent=duration(lastTime); main.querySelector('#seek').value=video.duration ? lastTime/video.duration*100 : 0; });
   video.addEventListener('durationchange',()=>{ if(stamp===revision && Number.isFinite(video.duration)) main.querySelector('#total').textContent=duration(video.duration); });
   video.addEventListener('play',updatePlayButton); video.addEventListener('pause',updatePlayButton);
-  video.addEventListener('ended',updatePlayButton);
+  video.addEventListener('pause', () => { if (stamp === revision) persistPlayback(); });
+  video.addEventListener('ended', () => { if (stamp === revision) { persistPlayback(); updatePlayButton(); } });
   video.addEventListener('loadedmetadata',()=>{ streamed=true; });
   video.addEventListener('error',async()=>{
     if (stamp!==revision || refreshing) return;
@@ -163,7 +214,8 @@ async function play() {
     finally { refreshing=false; }
   });
   main.querySelector('#seek').addEventListener('input',event=>{ if(Number.isFinite(video.duration)) video.currentTime=Number(event.target.value)/100*video.duration; });
-  try { await source(); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
+  const progress = readProgress(storage, progressKey)[film.id];
+  try { await source(progress && progress.time / progress.duration < 0.95 ? progress.time : 0); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
 }
 function updatePlayButton() {
   const video=main.querySelector('video'), button=main.querySelector('.center-play');
@@ -224,9 +276,18 @@ main.addEventListener('submit',async event=>{
 });
 main.addEventListener('click',async event=>{
   const button=event.target.closest('button'); if(!button) return;
+  if(button.dataset.playFilm) { chooseFilm(button.dataset.playFilm, true); return; }
+  if(button.dataset.filter) { activeFilter=button.dataset.filter; gridMode=true; library(); main.querySelector(`[data-filter="${activeFilter}"]`)?.focus({preventScroll:true}); return; }
+  if(button.dataset.variant) { chooseFilm(button.dataset.variant); [...main.querySelectorAll('[data-variant]')].find(el => el.dataset.variant === film.id)?.focus(); return; }
   if(button.dataset.film) { chooseFilm(button.dataset.film); return; }
-  if(button.dataset.version) { version=film.versions.find(v=>v.kind===button.dataset.version); filmPage(); return; }
+  if(button.dataset.version) { version=film.versions.find(v=>v.kind===button.dataset.version); filmPage(); main.querySelector(`[data-version="${version.kind}"]`)?.focus(); return; }
   switch(button.dataset.action) {
+    case 'hero-play': chooseFilm(button.dataset.id, true); break;
+    case 'hero-info': chooseFilm(button.dataset.id); break;
+    case 'close-detail': closeDetail(); break;
+    case 'search': searching=true; gridMode=true; library(); main.querySelector('#film-search').focus(); break;
+    case 'close-search': searching=false; query=''; gridMode=activeFilter!=='All'; library(); main.querySelector('[data-action="search"]').focus(); break;
+    case 'clear-filter': activeFilter='All'; query=''; searching=false; gridMode=false; library(); main.querySelector('.filters').scrollLeft=0; main.querySelector('[data-filter="All"]').focus({preventScroll:true}); break;
     case 'back': screen==='film' ? library() : filmPage(); break;
     case 'retry': await loadLibrary(); break;
     case 'connect': connect(); break;
@@ -246,6 +307,14 @@ main.addEventListener('click',async event=>{
     }
   }
 });
+main.addEventListener('input', event => {
+  if(event.target.id !== 'film-search') return;
+  const caret = event.target.selectionStart;
+  query = event.target.value; library();
+  const input = main.querySelector('#film-search'); input.focus(); input.setSelectionRange(caret, caret);
+});
+window.addEventListener('pagehide', persistPlayback);
+document.addEventListener('visibilitychange', () => { if(document.hidden) persistPlayback(); });
 document.querySelector('[data-close-settings]').addEventListener('click',()=>settings.close());
 document.querySelector('#forget-token').addEventListener('click',async()=>{
   try {

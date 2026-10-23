@@ -41,6 +41,34 @@ test('catalog rejects path traversal, URL paths, bad dimensions and duplicate ID
   }
 });
 
+test('catalog preserves optional film metadata and keeps old catalogs valid', async () => {
+  const metadata = { product: 'MK Voice', kind: 'demo', lang: 'ar', group: 'sample-cuts', variant: 'Arabic-led cut', blurb: 'A sample demo.' };
+  const data = good();
+  Object.assign(data.films[0], metadata);
+  globalThis.fetch = async () => Response.json(data);
+  const result = (await api.getCatalog({ token: 'secret' })).films[0];
+  for (const [key, value] of Object.entries(metadata)) assert.equal(result[key], value, key);
+  globalThis.fetch = async () => Response.json(good());
+  const old = (await api.getCatalog({ token: 'secret' })).films[0];
+  for (const key of Object.keys(metadata)) assert.equal(Object.hasOwn(old, key), false, key);
+
+  for (const [key, value] of [
+    ['product', 'Other product'], ['product', 5], ['kind', 'movie'], ['kind', []], ['lang', 'fr'], ['lang', {}],
+    ['group', 5], ['group', ' '], ['group', 'a'.repeat(201)], ['variant', false], ['variant', ''],
+    ['blurb', {}], ['blurb', 'a'.repeat(1001)], ['poster', '../private.png'],
+  ]) {
+    const invalid = good();
+    Object.assign(invalid.films[0], metadata, { [key]: value });
+    globalThis.fetch = async () => Response.json(invalid);
+    await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' }, key);
+  }
+  const invalid = good();
+  Object.assign(invalid.films[0], metadata);
+  invalid.films[0].versions[0].file = 'https://example.test/private.mp4';
+  globalThis.fetch = async () => Response.json(invalid);
+  await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' });
+});
+
 test('errors have safe stable codes and never include token or URL', async () => {
   for (const [status, headers, code] of [[401, {}, 'token'], [403, {}, 'token'], [403, { 'x-ratelimit-remaining': '0' }, 'rate-limit'], [404, {}, 'access'], [503, {}, 'github-unreachable']]) {
     globalThis.fetch = async () => new Response('', { status, headers });

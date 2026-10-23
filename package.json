@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",
-    "test": "node --test tests/api.test.mjs",
+    "test": "node --test tests/api.test.mjs tests/catalog.test.mjs",
     "test:browser": "node tests/browser.mjs",
     "shots:compare": "node scripts/compare.mjs"
   },

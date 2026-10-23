@@ -3,7 +3,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 import { fileURLToPath } from 'node:url';
 import { serve } from '../scripts/serve.mjs';
-import { compareShots } from '../scripts/compare.mjs';
 
 const origin = 'http://127.0.0.1:4173';
 const root = new URL('../', import.meta.url);
@@ -39,6 +38,11 @@ async function loaded(page, suffix = '?demo') {
   if (state) await page.locator(`main.${state === 'connect-error' ? 'connect' : state}`).waitFor();
   else if (suffix.includes('demo')) await page.locator('main.library').waitFor();
   await page.evaluate(() => document.fonts.ready);
+}
+
+async function openFeature(page) {
+  await page.locator('[data-action=hero-info]').click();
+  await page.locator('#film-detail[open]').waitFor();
 }
 
 async function shot(page, name) {
@@ -82,27 +86,120 @@ try {
       if (state === 'offline' || state === 'github-unreachable') assert.ok(await page.getByRole('button', { name: /retry/i }).count());
     });
 
-    await record(`${viewport.width} library and Arabic title`, async () => {
+    await record(`${viewport.width} home and Arabic title`, async () => {
       await loaded(page);
-      await page.getByRole('button', { name: 'Watch film', exact: true }).waitFor();
-      await shot(page, `library${suffix}`);
+      await page.locator('.billboard [data-action=hero-info]').waitFor();
+      await shot(page, `home${suffix}`);
       await checkLayout(page);
       const arabic = catalog.films.find(f => /[\u0600-\u06ff]/.test(f.title));
       assert.ok(arabic, 'Demo includes Arabic title');
       const title = page.getByText(arabic.title, { exact: true }).first();
       assert.equal(await title.getAttribute('dir'), 'auto', 'Arabic title uses dir=auto');
       assert.equal(await title.evaluate(el => getComputedStyle(el).direction), 'rtl');
-      assert.ok(await title.evaluate(el => document.fonts.check(`16px ${getComputedStyle(el).fontFamily}`)), 'Title font is loaded');
+      assert.ok(await title.evaluate(el => document.fonts.check(`${getComputedStyle(el).fontWeight} ${getComputedStyle(el).fontSize} ${getComputedStyle(el).fontFamily}`, el.textContent)), 'Title font is loaded');
+      assert.ok(await page.locator('.shelf').count() > 1, 'Home has grouped film rows');
+      assert.equal(await page.locator('.billboard').count(), 1, 'Newest film has a billboard');
+      const card = page.locator('.film-card').first();
+      await card.focus();
+      assert.notEqual(await card.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Cards have visible keyboard focus');
+    });
+
+    await record(`${viewport.width} chips and Arabic search`, async () => {
+      const arabic = catalog.films.find(f => f.lang === 'ar');
+      assert.ok(arabic, 'Demo has an Arabic film');
+      const allCount = new Set(catalog.films.map(f => f.group || f.id)).size;
+      await page.locator('[data-filter=All]').click();
+      await page.locator('.results-grid').waitFor();
+      assert.equal(await page.locator('.results-grid .film-card').count(), allCount, 'All chip lists each grouped title once');
+      for (const [chip, product] of [['MK Voice', 'MK Voice'], ['Business OS', 'MK Business OS'], ['Talent Atlas', 'Talent Atlas'], ['Job Orbit', 'MK Job Orbit'], ['Suite & apps', 'MK Suite & apps'], ['More', 'More films'], ['Ads'], ['Demos']]) {
+        await page.locator('[data-filter]').filter({ hasText: new RegExp(`^${chip.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).click();
+        await page.locator('.results-grid').waitFor();
+        const matches = catalog.films.filter(f => product ? f.product === product : chip === 'Ads' ? ['ad', 'loop'].includes(f.kind) : f.kind === 'demo');
+        const count = new Set(matches.map(f => f.group || f.id)).size;
+        assert.equal(await page.locator('.results-grid .film-card').count(), count, `${chip} chip filters grouped films`);
+      }
+      await page.locator('[data-filter=Arabic]').click();
+      if (!desktop) assert.ok(await page.locator('[data-filter=Arabic]').evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.left >= 0 && rect.right <= innerWidth;
+      }), 'Selected Arabic chip stays in the phone viewport');
+      const grid = page.locator('.results-grid');
+      await grid.waitFor();
+      assert.ok(await grid.locator(`.film-card[data-film="${arabic.id}"]`).count(), 'Arabic chip finds Arabic title');
+      assert.ok(await page.locator('.results-count').innerText(), 'Filtered view gives a count');
+      await shot(page, `filtered-grid${suffix}`);
+      await checkLayout(page);
+      await page.locator('[data-action=clear-filter]').click();
+      await page.locator('.billboard').waitFor();
+      await page.locator('[data-action=search]').click();
+      await grid.waitFor();
+      assert.equal(await grid.locator('.film-card').count(), allCount, 'Opening search shows the title grid');
+      await page.locator('#film-search').fill(arabic.title);
+      await page.waitForFunction(id => document.querySelector(`.results-grid .film-card[data-film="${id}"]`), arabic.id);
+      assert.equal(await grid.locator('.film-card').count(), 1, 'Full Arabic title search finds one film');
+      assert.equal(await grid.locator('.film-title').first().getAttribute('dir'), 'auto');
+      await shot(page, `search${suffix}`);
+      await checkLayout(page);
+      await page.locator('#film-search').fill('no-such-made-up-film-987');
+      await page.waitForFunction(() => document.querySelector('.results-grid')?.querySelectorAll('.film-card').length === 0);
+      assert.match(await page.locator('.results-count').innerText(), /0/, 'No matches shows a zero count');
+      await page.locator('[data-action=clear-filter]').click();
+      await page.locator('.billboard').waitFor();
+    });
+
+    await record(`${viewport.width} groups collapse and variants stay selectable`, async () => {
+      const primary = catalog.films.find(f => f.id === 'golden-hour');
+      const alternate = catalog.films.find(f => f.group === primary.group && f.id !== primary.id);
+      assert.ok(primary?.group && primary.group === alternate?.group, 'Demo has an explicit duplicate group');
+      await page.locator('[data-action=search]').click();
+      await page.locator('#film-search').fill('Golden Hour');
+      await page.locator('.results-grid').waitFor();
+      assert.equal(await page.locator('.results-grid .film-card').count(), 1, 'Two variants make one card');
+      assert.equal(await page.locator(`.results-grid .film-card[data-film="${alternate.id}"]`).count(), 0, 'Alternate is not a second card');
+      await page.locator(`.results-grid .film-card[data-film="${primary.id}"]`).focus();
+      await page.keyboard.press('Enter');
+      const detail = page.locator('#film-detail');
+      await detail.locator(`[data-variant="${alternate.id}"]`).click();
+      assert.equal(await detail.locator('.film-title').first().innerText(), alternate.title, 'Variant selects its film');
+      await detail.locator(`[data-variant="${primary.id}"]`).click();
+      assert.equal(await detail.locator('.film-title').first().innerText(), primary.title, 'Main cut can be restored');
+      await page.keyboard.press('Escape');
+      await page.locator('#film-detail').waitFor({ state: 'hidden' });
+      await page.locator('[data-action=clear-filter]').click();
+    });
+
+    await record(`${viewport.width} related films and detail focus return`, async () => {
+      const opener = page.locator('.film-card[data-film="last-light"]').first();
+      await opener.focus();
+      await page.keyboard.press('Enter');
+      const detail = page.locator('#film-detail[open]');
+      await detail.waitFor();
+      const related = detail.locator('.shelf[aria-label="More like this"]');
+      assert.equal(await related.locator('.film-card[data-film="paper-moon"]').count(), 1, 'Detail offers another film from the same product');
+      await page.keyboard.press('Escape');
+      await detail.waitFor({ state: 'hidden' });
+      assert.ok(await opener.evaluate(el => document.activeElement === el), 'Closing details returns focus to its card');
     });
 
     await record(`${viewport.width} film and both players`, async () => {
-      await page.getByRole('button', { name: 'Watch film', exact: true }).click();
-      await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
-      await shot(page, `film${suffix}`);
+      await openFeature(page);
+      await page.locator('#film-detail [data-action=play]').waitFor();
+      assert.ok(await page.locator('#film-detail').evaluate(el => el.matches(':modal')), 'Details are a modal dialog');
+      assert.ok(await page.locator('#film-detail img[data-poster]').count(), 'Detail has a large poster');
+      const release = catalog.films.find(f => f.id === 'golden-hour').release;
+      if (release?.startsWith('https://')) {
+        const link = page.locator('#film-detail .release-link');
+        assert.equal(await link.getAttribute('href'), release, 'Detail uses the catalog release link');
+        assert.equal(new URL(await link.getAttribute('href')).protocol, 'https:');
+        assert.equal(await link.getAttribute('target'), '_blank');
+        assert.match(await link.getAttribute('rel'), /\bnoopener\b/);
+        assert.match(await link.getAttribute('rel'), /\bnoreferrer\b/);
+      }
+      await shot(page, `detail${suffix}`);
       await checkLayout(page);
       for (const [kind, label] of [['portrait', 'Phone 9:16'], ['landscape', 'Desktop 16:9']]) {
         await page.getByRole('button', { name: label, exact: false }).click();
-        await page.getByRole('button', { name: 'Play', exact: true }).click();
+        await page.locator('#film-detail [data-action=play]').click();
         const video = page.locator('video');
         await video.waitFor();
         await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
@@ -119,6 +216,7 @@ try {
         assert.notEqual(await page.getByLabel('Seek', { exact: true }).evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Keyboard focus is visible');
         await page.locator('main').focus();
         await shot(page, `player-${kind}${suffix}`);
+        if (kind === 'landscape') await shot(page, `player${suffix}`);
         const previousVideo = await video.elementHandle();
         await page.getByRole('button', { name: 'Back to film', exact: true }).click();
         await previousVideo.evaluate(el => { el.dispatchEvent(new Event('timeupdate')); el.dispatchEvent(new Event('durationchange')); });
@@ -129,22 +227,22 @@ try {
       await loaded(page);
       const phoneOnly = catalog.films.find(f => f.versions.length === 1 && f.versions[0].kind === 'phone');
       assert.ok(phoneOnly, 'Demo has phone-only film');
-      await page.getByText(phoneOnly.title, { exact: true }).click();
-      await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
+      await page.locator(`.film-card[data-film="${phoneOnly.id}"]`).first().click();
+      await page.locator('#film-detail [data-action=play]').waitFor();
       assert.equal(await page.getByRole('button', { name: 'Desktop 16:9', exact: false }).count(), 0, 'Unavailable desktop version is not offered');
       await shot(page, `film-phone-only${suffix}`);
     });
 
     await record(`${viewport.width} save cancel and download`, async () => {
       await loaded(page);
-      await page.getByRole('button', { name: 'Watch film', exact: true }).click();
+      await openFeature(page);
       await page.route('**/demo/*.mp4', async route => {
         await new Promise(resolve => setTimeout(resolve, 500));
         await route.continue().catch(() => {});
       });
       await page.getByRole('button', { name: 'Save to phone', exact: true }).click();
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await page.locator('main.film').waitFor();
+      await page.locator('#film-detail[open]').waitFor();
       await page.unroute('**/demo/*.mp4');
       await page.getByRole('button', { name: 'Save to phone', exact: true }).click();
       await page.getByRole('button', { name: 'Download video', exact: true }).waitFor();
@@ -157,11 +255,51 @@ try {
       await page.locator('main.saved').waitFor();
       await shot(page, `saved-flow${suffix}`);
       await page.getByRole('button', { name: 'Back to film', exact: true }).last().click();
-      await page.locator('main.film').waitFor();
+      await page.locator('#film-detail[open]').waitFor();
     });
 
     await context.close();
   }
+
+  await record('continue watching persists, resumes, and clears completed films', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    const page = await context.newPage();
+    captureErrors(page, 'continue watching');
+    await loaded(page);
+    await openFeature(page);
+    await page.locator('#film-detail [data-action=play]').click();
+    await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+    await page.locator('video').evaluate(el => {
+      el.pause(); el.currentTime = 1.1; el.dispatchEvent(new Event('timeupdate'));
+    });
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('mkc.demo.progress') || '{}')['golden-hour']?.time >= 1);
+    const progress = await page.evaluate(() => JSON.parse(localStorage.getItem('mkc.demo.progress')));
+    assert.ok(progress['golden-hour'].duration > 0, 'Saved progress has a duration');
+    assert.ok(progress['golden-hour'].updated > 0, 'Saved progress has an update time');
+    assert.deepEqual(Object.keys(progress['golden-hour']).sort(), ['duration', 'time', 'updated'], 'Progress stores only position data');
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.progress')), null, 'Demo progress is separate from private films');
+    await page.reload();
+    const shelf = page.locator('.shelf[aria-label="Continue watching"]');
+    await shelf.waitFor();
+    assert.equal(await shelf.locator('.film-card[data-film="golden-hour"]').count(), 1, 'Saved film returns after reload');
+    await shelf.locator('.film-card[data-film="golden-hour"]').click();
+    await page.locator('#film-detail [data-action=play]').click();
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video');
+      if (!video || video.readyState < 2) return false;
+      video.pause(); return video.currentTime >= 1;
+    });
+    assert.ok(await page.locator('video').evaluate(el => el.currentTime < 2.5), 'Film resumes near the saved position');
+    await page.locator('video').evaluate(el => { el.currentTime = el.duration; el.dispatchEvent(new Event('ended')); });
+    await page.waitForFunction(() => {
+      const entry = JSON.parse(localStorage.getItem('mkc.demo.progress') || '{}')['golden-hour'];
+      return !entry || entry.time / entry.duration >= 0.95;
+    });
+    await page.reload();
+    await page.locator('main.library').waitFor();
+    assert.equal(await page.locator('.shelf[aria-label="Continue watching"]').count(), 0, 'Completed film leaves Continue watching');
+    await context.close();
+  });
 
   await record('share success and user cancel', async () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
@@ -176,7 +314,7 @@ try {
     const page = await context.newPage();
     captureErrors(page, 'share');
     await loaded(page);
-    await page.getByRole('button', { name: 'Watch film', exact: true }).click();
+    await openFeature(page);
     await page.getByRole('button', { name: 'Save to phone', exact: true }).click();
     await page.getByRole('button', { name: 'Save video', exact: true }).click();
     await page.getByText('Save cancelled.', { exact: false }).waitFor();
@@ -216,14 +354,14 @@ try {
     const page = await context.newPage();
     captureErrors(page, 'deferred share');
     await loaded(page);
-    await page.getByRole('button', { name: 'Watch film', exact: true }).click();
+    await openFeature(page);
     await page.getByRole('button', { name: 'Save to phone', exact: true }).click();
     await page.getByRole('button', { name: 'Save video', exact: true }).click();
     await page.getByRole('button', { name: 'Back to film', exact: true }).first().click();
-    await page.locator('main.film').waitFor();
+    await page.locator('#film-detail[open]').waitFor();
     await page.evaluate(() => window.__completeShare());
     await page.waitForTimeout(100);
-    assert.equal(await page.locator('main.film').count(), 1);
+    assert.equal(await page.locator('#film-detail[open]').count(), 1);
     await context.close();
   });
 
@@ -249,8 +387,8 @@ try {
     await loaded(page, '');
     await page.getByLabel('GitHub token', { exact: true }).fill('synthetic-test-token');
     await page.getByRole('button', { name: 'Connect', exact: true }).click();
-    await page.getByRole('button', { name: 'Watch film', exact: true }).click();
-    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await openFeature(page);
+    await page.locator('#film-detail [data-action=play]').click();
     await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
     for (let cycle = 0; cycle < 2; cycle++) {
       const video = page.locator('video');
@@ -291,8 +429,8 @@ try {
     await loaded(page, '');
     await page.getByLabel('GitHub token', { exact: true }).fill('synthetic-test-token');
     await page.getByRole('button', { name: 'Connect', exact: true }).click();
-    await page.getByRole('button', { name: 'Watch film', exact: true }).click();
-    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await openFeature(page);
+    await page.locator('#film-detail [data-action=play]').click();
     await page.waitForFunction(() => document.querySelector('video')?.src.startsWith('blob:') && document.querySelector('video')?.readyState >= 2);
     assert.equal(metadata, 2, 'The fallback asks for one fresh URL');
     assert.equal(await page.locator('main.player').count(), 1, 'The player stays open');
@@ -320,9 +458,9 @@ try {
     const page = await context.newPage();
     captureErrors(page, '844 landscape');
     await loaded(page);
-    await page.getByRole('button', { name: 'Watch film', exact: true }).click();
+    await openFeature(page);
     await page.getByRole('button', { name: 'Desktop 16:9', exact: false }).click();
-    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.locator('#film-detail [data-action=play]').click();
     await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
     await page.locator('video').evaluate(el => el.pause());
     await checkLayout(page);
@@ -367,8 +505,7 @@ try {
   await new Promise(resolve => server.close(resolve));
 }
 
-const comparisons = await compareShots();
-await writeFile(new URL('results.json', shots), JSON.stringify({ checks: results, consoleErrors: errors, comparisons }, null, 2) + '\n');
+await writeFile(new URL('results.json', shots), JSON.stringify({ checks: results, consoleErrors: errors }, null, 2) + '\n');
 assert.deepEqual(errors, [], 'No browser console or page errors');
 assert.ok(results.every(r => r.pass), 'All browser checks pass');
-console.log(`${results.length} checks passed; ${comparisons} mockup comparisons written.`);
+console.log(`${results.length} browser checks passed.`);

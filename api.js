@@ -95,11 +95,21 @@ function catalog(data) {
         return { kind: version.kind, file: validPath(version.file), w: version.w, h: version.h, bytes: version.bytes };
       });
       if (film.release != null && typeof film.release !== 'string') invalid();
+      const metadata = {};
+      for (const [key, allowed] of Object.entries({
+        product: ['MK Voice', 'MK Business OS', 'Talent Atlas', 'MK Job Orbit', 'MK Suite & apps', 'More films'],
+        kind: ['film', 'ad', 'loop', 'teaser', 'demo', 'reel'], lang: ['ar', 'en'],
+      })) {
+        if (film[key] != null) { if (!allowed.includes(film[key])) invalid(); metadata[key] = film[key]; }
+      }
+      for (const key of ['group', 'variant', 'blurb']) {
+        if (film[key] != null) metadata[key] = text(film[key], key === 'blurb' ? 1000 : 200);
+      }
       return {
         id, title: text(film.title), dir: film.dir, seconds: film.seconds,
         added: film.added == null ? '' : text(film.added, 200),
         poster: validPath(film.poster), posterShape: film.posterShape,
-        versions, release: film.release ?? null,
+        versions, release: film.release ?? null, ...metadata,
       };
     }),
   };

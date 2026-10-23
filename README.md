@@ -1,8 +1,8 @@
 # MK Cinema
 
-A private film player for one owner. Plain HTML, CSS, and ES modules. No build step, runtime packages, CDN, analytics, or third-party scripts. The phone layout follows the approved **Velvet Premiere** mockups. Desktop uses the same tall feature and film list.
+A private film player for one owner. Plain HTML, CSS, and ES modules. No build step, runtime packages, CDN, analytics, or third-party scripts. The home has a full-width billboard, side-scroll film rows, search, and filters. The canvas is #141414 with MK gold accents.
 
-This repo holds **no private film data**: no real catalog, titles, posters, videos, or token. `demo/` holds seven made-up films, original sample art, and two three-second test clips. `shots/` is local review evidence and is ignored by Git.
+This repo holds **no private film data**: no real catalog, titles, posters, videos, or token. `demo/` holds eight made-up entries grouped into seven titles, original sample art, and two three-second test clips. `shots/` is local review evidence and is ignored by Git.
 
 ## Run locally
 
@@ -34,7 +34,13 @@ Settings → **Forget token** removes the stored token and cached private poster
 
 ## Watch and save
 
-Choose a film, then Phone or Desktop when both exist. The player contains the whole video without cropping. It has play/pause, seek, mute, and full-screen controls. Arabic titles use `dir="auto"` and a local Arabic font.
+Choose a card or **More info** to open its detail sheet. Pick a cut, then Phone or Desktop when both exist. The sheet also shows the date added, a release link when supplied, and films with the same product. Play starts the existing full-frame player, with play/pause, seek, mute, and full-screen controls. Arabic titles use `dir="auto"` and a local Arabic font.
+
+Search and chips open a grid with a title count. Clear filters returns to the home. Rows show Continue watching, New this week (the last seven days), each product, Ads & loops, Demos, and Arabic. Empty rows are hidden. The billboard stays a still poster; no film is fetched until Play or Save is selected.
+
+Watch progress is saved per original film id in `mkc.progress`. It contains only numeric time, duration, and update time; no title, token, or URL. Demo progress uses `mkc.demo.progress`. Play resumes an unfinished film. Films at 95% or more are removed from Continue watching and replay from the start. Blocked browser storage does not prevent playback.
+
+Optional catalog fields are `product`, `kind`, `lang`, `group`, `variant`, and `blurb`. Old catalogs still work. Only entries with an explicit shared `group` collapse. The newest cut is the main card; ties prefer more picture versions, then Desktop, then original catalog order. Filters and search inspect every cut and show the matching cut. Real group decisions belong only in the private catalog repo.
 
 **Save to phone** downloads the selected file into memory. Progress uses Content-Length when available; otherwise it shows received MB. **Cancel** stops the fetch. Once ready, tap **Save video** to open the device share sheet, then choose **Save Video** on iPhone. This second tap preserves the user gesture required by Web Share. When file sharing is not available, **Download video** uses the browser download function. A cancelled share can be tried again without another download.
 
@@ -62,11 +68,11 @@ The browser suite uses headless Chrome at `C:\Program Files\Google\Chrome\Applic
 
 - Phone captures: `shots/<screen>.png` at 390 × 844.
 - Desktop captures: `shots/<screen>-desktop.png` at 1440 × 900.
-- Side-by-side reviews: `shots/compare-<screen>.png`; mockup left, app right.
+- Current screens: `home`, `filtered-grid`, `search`, `detail`, and `player`. Error and save state captures are also refreshed.
 - Machine results: `shots/results.json`.
 - Human review and test scope: `REPORT.md`.
 
-The comparison script reads the approved mockups from `..\mk-cinema-concepts\velvet-premiere\`. They are not copied into the site's tracked files. Runtime fonts are local SIL OFL files; see `fonts/README.md` and the license files. Sample assets can be regenerated with `py -3.12 scripts/make-assets.py` (Pillow and ffmpeg are needed only for asset work).
+The browser suite uses only this repo and does not compare the old mockups. Runtime fonts are local SIL OFL files; see `fonts/README.md` and the license files. Sample assets can be regenerated with `py -3.12 scripts/make-assets.py` (Pillow and ffmpeg are needed only for asset work).
 
 ## Owner checks still needed
 

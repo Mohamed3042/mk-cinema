@@ -4,6 +4,12 @@
   "films": [
     {
       "id": "golden-hour",
+      "product": "MK Voice",
+      "kind": "film",
+      "lang": "en",
+      "group": "golden-hour-cuts",
+      "variant": "Main film",
+      "blurb": "A film called Golden Hour.",
       "title": "Golden Hour",
       "dir": "ltr",
       "seconds": 3,
@@ -26,10 +32,14 @@
           "bytes": 9630
         }
       ],
-      "release": "demo-golden-hour"
+      "release": "https://example.com/films/golden-hour"
     },
     {
       "id": "light-journey",
+      "product": "MK Business OS",
+      "kind": "demo",
+      "lang": "ar",
+      "blurb": "An Arabic demo called Light Journey.",
       "title": "رحلة الضوء",
       "dir": "rtl",
       "seconds": 3,
@@ -56,6 +66,10 @@
     },
     {
       "id": "velvet-steps",
+      "product": "Talent Atlas",
+      "kind": "ad",
+      "lang": "en",
+      "blurb": "A three-second ad called Velvet Steps.",
       "title": "Velvet Steps",
       "dir": "ltr",
       "seconds": 3,
@@ -75,6 +89,10 @@
     },
     {
       "id": "amber-room",
+      "product": "MK Job Orbit",
+      "kind": "film",
+      "lang": "en",
+      "blurb": "A film called The Amber Room.",
       "title": "The Amber Room",
       "dir": "ltr",
       "seconds": 3,
@@ -101,6 +119,10 @@
     },
     {
       "id": "quiet-city",
+      "product": "MK Suite & apps",
+      "kind": "loop",
+      "lang": "en",
+      "blurb": "A three-second loop called A Quiet City.",
       "title": "A Quiet City",
       "dir": "ltr",
       "seconds": 3,
@@ -127,6 +149,10 @@
     },
     {
       "id": "last-light",
+      "product": "More films",
+      "kind": "teaser",
+      "lang": "en",
+      "blurb": "A teaser called Last Light.",
       "title": "Last Light",
       "dir": "ltr",
       "seconds": 3,
@@ -153,6 +179,10 @@
     },
     {
       "id": "paper-moon",
+      "product": "More films",
+      "kind": "reel",
+      "lang": "en",
+      "blurb": "A reel called Paper Moon Passage.",
       "title": "Paper Moon Passage",
       "dir": "ltr",
       "seconds": 3,
@@ -176,6 +206,25 @@
         }
       ],
       "release": "demo-paper-moon"
+    },
+    {
+      "id": "golden-hour-v1",
+      "title": "Golden Hour — V1",
+      "dir": "ltr",
+      "seconds": 3,
+      "added": "2026-10-15",
+      "poster": "demo/posters/golden-hour.jpg",
+      "posterShape": "9:16",
+      "versions": [
+        { "kind": "phone", "file": "demo/video-phone.mp4", "w": 180, "h": 320, "bytes": 8056 }
+      ],
+      "release": "demo-golden-hour-v1",
+      "product": "MK Voice",
+      "kind": "film",
+      "lang": "en",
+      "group": "golden-hour-cuts",
+      "variant": "V1",
+      "blurb": "The first version of Golden Hour."
     }
   ]
 }

@@ -1,7 +1,7 @@
 // Shell files are served cache-first: bump this on every shell change, or installed phones keep the old app.
-const CACHE = 'mkc-shell-v2';
+const CACHE = 'mkc-shell-v3';
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './api.js', './manifest.webmanifest',
+  './', './index.html', './styles.css', './app.js', './api.js', './catalog.js', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png', './favicon.png',
   './fonts/cormorant-garamond-latin-400-normal.woff2', './fonts/cormorant-garamond-latin-500-normal.woff2',
   './fonts/dm-sans-latin-400-normal.woff2', './fonts/dm-sans-latin-600-normal.woff2',
