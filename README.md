@@ -36,9 +36,20 @@ Settings → **Forget token** removes the stored token and cached private poster
 
 ## Watch and save
 
-Choose a card or **More info** to open its detail sheet. Pick a cut, then Phone or Desktop when both exist. The sheet also shows the date added, a release link when supplied, and films with the same product. Play starts the existing full-frame player, with play/pause, seek, mute, and full-screen controls. Arabic titles use `dir="auto"` and a local Arabic font.
+Choose a card or **More info** to open its detail sheet. Pick a cut, then Phone or Desktop when both exist. The sheet also shows the date added, a release link when supplied, and films with the same product. Play opens the player (below). Arabic titles use `dir="auto"` and a local Arabic font.
 
 Search and chips open a grid with a title count. Clear filters returns to the home. Rows show Continue watching, New this week (the last seven days), each product, Ads & loops, Demos, and Arabic. Empty rows are hidden. **Explore all** in a row's heading opens that row as a grid.
+
+### The player
+
+The player is Netflix's phone player in the app's glass (`player.js`). The film fills the screen edge to edge on black, under the notch and the home indicator; there is no page header and no strip of controls around it.
+
+- **Controls float over the film** and fade 3 s after the last touch while it plays; they stay while it is paused, and one tap on the picture brings them back (another tap sends them away). Top: Back, the brand line and title, AirPlay (only where Safari offers a target) and sound. Middle: back 10 s, a white play/pause, forward 10 s. Bottom: the scrubber with elapsed and remaining time, then **Fill**, the cut switch (Phone / Desktop, when both exist; it carries on at the same time) and, where the browser has it, full screen.
+- **Double-tap** the left or right third of the picture to jump 10 s back or forward, with a "−10"/"+10" ripple; more taps keep adding.
+- **A landscape cut turns sideways on a phone held upright**, filling it as if the phone were turned (iPhone Safari cannot lock the orientation or put a page element full screen, so the rotation is CSS). Taps, double-taps, the scrubber and the safe areas all work in the turned frame. A phone already in landscape, a tablet or a desktop is never turned. On Android, the full-screen button also locks landscape for a landscape cut.
+- **Fit or Fill:** the film is shown whole by default, so titles near its edges are never cut. **Fill** (or a two-finger pinch out) zooms it to cover the screen; a pinch in shows it whole again. The choice is kept in `mkc.settings` and is also in Settings → Playback.
+- **Keyboard:** Space (or K) plays and pauses, arrows jump 10 s, M mutes, F toggles full screen (desktop), Esc leaves full screen and then the player. The scrubber is a labelled slider: arrows, Page Up/Down (1 min), Home and End. With reduced motion the controls show and hide at once and there are no ripples or zooms.
+- Resume, progress saving, the fresh-link retry for an expired URL, the whole-file fallback when Safari refuses the stream, and the `role=status` messages work as before. Sound comes from the Play tap: the film is started inside it, before its address arrives.
 
 ### Tabs
 
@@ -56,7 +67,7 @@ The **Reels** tab plays the cinema as a reel, TikTok style: one film fills the s
 
 Settings is a page (the phone's Settings tab, the desktop gear, and the gear on the Connect and error screens, where a back button returns). Every control changes what the app does:
 
-- **Playback:** Autoplay previews (on by default; off under reduced motion, and the switch says so).
+- **Playback:** Autoplay previews (on by default; off under reduced motion, and the switch says so) · Picture in the player: Fit or Fill.
 - **Reels:** Start with sound (on) · Which titles: Films, Ads, Demos with their counts (all on; the last one stays on) · Order: Shuffle or Newest first · When a film ends: Play the next or Wait.
 - **My List:** Open My List, with the number of saved titles.
 - **Connection:** the token state in plain words and **Forget token**.
@@ -102,7 +113,8 @@ The browser suite uses headless Chrome at `C:\Program Files\Google\Chrome\Applic
 
 - Phone captures: `shots/<screen>.png` at 390 × 844.
 - Desktop captures: `shots/<screen>-desktop.png` at 1440 × 900.
-- Current screens: `home`, `new-and-hot`, `my-list`, `reels`, `settings`, `modal` (the phone sheet), `bob-card` (desktop only), `filtered-grid`, `search`, `detail`, and `player`. Error and save state captures are also refreshed.
+- Current screens: `home`, `new-and-hot`, `my-list`, `reels`, `settings`, `modal` (the phone sheet), `bob-card` (desktop only), `filtered-grid`, `search`, `detail`, `player-portrait`, `player-landscape` and `player-landscape-phone` (844 × 390). Error and save state captures are also refreshed.
+- Player review set: `shots/netflix-player/` (phone 9:16 with and without controls, Fill, a 16:9 cut turned sideways, a landscape phone, desktop), written by the `Player:` checks in `tests/motion.mjs`.
 - Machine results: `shots/results.json` and `shots/results-motion.json`.
 - Motion proof: `npm.cmd run shots:motion` records a scripted tour (desktop, then phone) with Playwright video in `shots/motion/` and cuts 12-frame contact strips with ffmpeg to `shots/motion-<name>.png`.
 - Human review and test scope: `REPORT.md`.
@@ -112,7 +124,7 @@ The browser suite uses only this repo and does not compare the old mockups. Runt
 ## Owner checks still needed
 
 - Use a real read-only token to load, play, seek, and save private films.
-- On an iPhone home screen, check safe areas, rotation, full screen, and the native **Save Video** action. Check Photos after saving.
+- On an iPhone home screen, check safe areas, the player turned sideways for a 16:9 cut (controls, scrubber and double-taps), Fill and pinch, sound after Play, and the native **Save Video** action. Check Photos after saving.
 - On the iPhone, watch the billboard and New & Hot with real films. Previews start muted and inline. Low Power Mode refuses autoplay, so the billboard stays a poster there and New & Hot steps frames with your scroll. A film over 40 MB that Safari will not stream stays on its poster.
 - Chrome and the tests cover view transitions, the sheet drag, and scrolling; none of it has run on a real iPhone yet.
 
