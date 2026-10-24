@@ -368,12 +368,14 @@ function browseView(all, progress) {
 // Reels: the cinema as a reel, one film a screen (reel.js), with the titles, order, sound and end the owner chose
 // in Settings. The reel's one video is started inside the tap that opened the tab, so an iPhone lets it play with
 // sound from then on. Coming back within the visit finds the same films, on the same one, at the same time.
-const reelKey = () => JSON.stringify([prefs.reelKinds, prefs.reelOrder, prefs.reelSound]);
+// The screen's cut: a phone plays 9:16 and a desktop 16:9; titles with that cut come first in the reel.
+const reelShape = () => desktopQuery.matches ? 'desktop' : 'phone';
+const reelKey = () => JSON.stringify([prefs.reelKinds, prefs.reelOrder, prefs.reelSound, reelShape()]);
 function reelScreen() {
   const all = groupsOf(), byId = new Map(all.map(group => [group.id, group]));
   const saved = reelResume?.catalog === catalog && reelResume.key === reelKey() ? reelResume : null;
   reelResume = null;
-  const entries = saved ? saved.items.map(item => ({ f: byId.get(item.id), n: item.n })).filter(item => item.f) : reelDeck(all, prefs).map((f, index) => ({ f, n: index + 1 }));
+  const entries = saved ? saved.items.map(item => ({ f: byId.get(item.id), n: item.n })).filter(item => item.f) : reelDeck(all, prefs, { prefer: reelShape() }).map((f, index) => ({ f, n: index + 1 }));
   const total = saved ? saved.total : entries.length;
   if (!entries.length) { mount('reel', reelEmpty(), { focus: false }); return; }
   const at = saved && entries[saved.index] ? saved.index : 0;
@@ -392,7 +394,7 @@ function reelScreen() {
     },
     more: () => {
       const track = main.querySelector('.reel-track'), last = byId.get(track.lastElementChild.dataset.film);
-      track.insertAdjacentHTML('beforeend', reelItems(nextRound(all, prefs, last).map((f, index) => ({ f, n: index + 1 })), -1));
+      track.insertAdjacentHTML('beforeend', reelItems(nextRound(all, prefs, last, { prefer: reelShape() }).map((f, index) => ({ f, n: index + 1 })), -1));
       void fillPosters(revision);
       return true;
     },
@@ -401,7 +403,7 @@ function reelScreen() {
 }
 // Posters load for the film on screen and its neighbours first; the rest wait until they come near.
 function reelItems(entries, at = 0) {
-  const prefer = desktopQuery.matches ? 'desktop' : 'phone';
+  const prefer = reelShape();
   return entries.map(({ f, n }, index) => {
     const cut = f.versions.find(v => v.kind === prefer) || f.versions[0], lazy = at < 0 || Math.abs(index - at) > 1;
     return `<article class="reel-item" aria-hidden="true" data-film="${escape(f.id)}" data-shape="${cut.kind}" data-n="${n}" aria-label="${escape(f.title)}"><div class="reel-stage">${poster(f, 'reel-fill', lazy)}${poster(f, 'reel-poster', lazy)}<div class="reel-shade"></div><i class="reel-progress" aria-hidden="true"></i></div><div class="reel-copy"><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'reel-title')}<p class="reel-meta">${metaLine(f)}</p><p class="blurb" dir="auto">${escape(f.blurb)}</p></div></article>`;
@@ -429,7 +431,7 @@ function settingsView({ solo = false } = {}) {
   const tokenState = demo ? 'Demo, no token used' : token ? 'Saved in this browser' : 'Not connected';
   return `<section class="settings-page" aria-labelledby="settings-title"><div class="settings-head">${solo ? `<button class="icon-button" data-action="settings-back" aria-label="Back">${icon('back')}</button>` : ''}<h1 id="settings-title">Settings</h1></div>
 ${group('playback', 'Playback', `${switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.')}${choiceRow('player-fit', 'Picture in the player', [['fit', 'Fit'], ['fill', 'Fill']], prefs.playerFit, 'Fit shows the whole film. Fill covers the screen and can trim its edges. A pinch in the player switches too.')}`)}
-${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder)}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
+${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder, 'Titles with your screen’s version come first.')}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
 ${catalog ? group('list', 'My List', `<button class="set-row set-link" data-action="open-list"><span class="set-name">Open My List</span><span class="set-value">${plural(saved)}</span>${icon('arrow')}</button>`) : ''}
 ${isGuest() ? group('sharing', 'Sharing', `<div class="set-row"><span class="set-name">Shared by</span><span class="set-value">${OWNER}</span></div><div class="set-row"><span class="set-name">Invite for</span><span class="set-value" dir="auto">${escape(guest.name)}</span></div><button class="set-row set-link set-danger" data-action="leave" aria-describedby="leave-note"><span class="set-name">Leave</span></button><p class="set-foot" id="leave-note">Forgets this invite on this device. ${OWNER}'s cinema stays as it is.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`) : `${!demo && token ? group('invites', 'Invites', invitesRows()) : ''}
 ${group('connection', 'Connection', `<div class="set-row"><span class="set-name">Token</span><span class="set-value">${tokenState}</span></div><button class="set-row set-link set-danger" id="forget-token" data-action="forget-token" aria-describedby="forget-note"><span class="set-name">Forget token</span></button><p class="set-foot" id="forget-note">Removes the token and cached posters, then goes back to Connect.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`)}`}

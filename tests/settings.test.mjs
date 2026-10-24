@@ -85,3 +85,63 @@ test('reels: the next round keeps the order the owner chose', () => {
   const last = reelDeck(groups, DEFAULTS).at(-1);
   for (let n = 0; n < 20; n++) assert.notEqual(nextRound(groups, DEFAULTS, last)[0].id, last.id, 'a shuffled round never opens with the film that just played');
 });
+
+// Cuts: p = phone only, d = desktop only, b = both. Products repeat so the shuffle rules have work to do.
+const cut = { p: ['phone'], d: ['desktop'], b: ['phone', 'desktop'] };
+const shaped = (id, shape, added, product) => ({ ...film(id, 'film', added, product), versions: cut[shape].map(kind => ({ kind, file: `demo/${id}-${kind}.mp4`, w: 1, h: 1, bytes: 1 })) });
+const mixed = groupFilms([
+  shaped('p1', 'p', '2026-10-30', 'MK Voice'), shaped('d1', 'd', '2026-10-29', 'Talent Atlas'), shaped('b1', 'b', '2026-10-28', 'MK Voice'),
+  shaped('p2', 'p', '2026-10-27', 'Talent Atlas'), shaped('d2', 'd', '2026-10-26', 'MK Voice'), shaped('b2', 'b', '2026-10-25', 'Talent Atlas'),
+  shaped('p3', 'p', '2026-10-24', 'MK Business OS'), shaped('d3', 'd', '2026-10-23', 'MK Business OS'),
+]);
+const hasCut = (item, kind) => item.versions.some(version => version.kind === kind);
+const seeded = seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const NEWEST = { ...DEFAULTS, reelOrder: 'newest' };
+
+test('reels: Newest first puts the titles with the screen\'s cut first, each part in date order', () => {
+  assert.deepEqual(ids(reelDeck(mixed, NEWEST, { prefer: 'phone' })), ['p1', 'b1', 'p2', 'b2', 'p3', 'd1', 'd2', 'd3']);
+  assert.deepEqual(ids(reelDeck(mixed, NEWEST, { prefer: 'desktop' })), ['d1', 'b1', 'd2', 'b2', 'd3', 'p1', 'p2', 'p3']);
+  assert.deepEqual(ids(reelDeck(mixed, NEWEST)), ['p1', 'd1', 'b1', 'p2', 'd2', 'b2', 'p3', 'd3'], 'no screen given: the plain date order');
+});
+
+test('reels: Shuffle shuffles each part on its own, every title once, phone or desktop cuts first', () => {
+  for (const prefer of ['phone', 'desktop']) {
+    const matching = mixed.filter(item => hasCut(item, prefer)).length, orders = new Set();
+    for (let seed = 1; seed <= 40; seed++) {
+      const deck = reelDeck(mixed, DEFAULTS, { random: seeded(seed), prefer });
+      assert.deepEqual(ids(deck).sort(), ids(mixed).sort(), `${prefer} ${seed}: every title once`);
+      assert.ok(deck.slice(0, matching).every(item => hasCut(item, prefer)), `${prefer} ${seed}: the screen's cuts come first`);
+      assert.ok(deck.slice(matching).every(item => !hasCut(item, prefer)), `${prefer} ${seed}: then the rest`);
+      for (let i = 1; i < deck.length; i++) assert.notEqual(deck[i].product, deck[i - 1].product, `${prefer} ${seed}: one product never twice in a row (avoidable here)`);
+      orders.add(ids(deck).join());
+    }
+    assert.ok(orders.size > 5, `${prefer}: the order really is shuffled`);
+  }
+});
+
+test('reels: a cinema where no title, or every title, has the screen\'s cut keeps the plain order', () => {
+  const phoneOnly = mixed.filter(item => !hasCut(item, 'desktop'));
+  assert.deepEqual(ids(reelDeck(phoneOnly, NEWEST, { prefer: 'desktop' })), ids(reelDeck(phoneOnly, NEWEST)), 'no desktop cuts: date order');
+  assert.deepEqual(ids(reelDeck(phoneOnly, NEWEST, { prefer: 'phone' })), ids(reelDeck(phoneOnly, NEWEST)), 'all phone cuts: date order');
+  assert.deepEqual(ids(reelDeck(phoneOnly, DEFAULTS, { random: seeded(5), prefer: 'desktop' })), ids(reelDeck(phoneOnly, DEFAULTS, { random: seeded(5) })), 'no matching cut: the same shuffle as before');
+  assert.deepEqual(ids(reelDeck(phoneOnly, DEFAULTS, { random: seeded(5), prefer: 'phone' })), ids(reelDeck(phoneOnly, DEFAULTS, { random: seeded(5) })), 'all match: the same shuffle as before');
+});
+
+test('reels: each new round is grouped the same way and never opens with the film or product that just played', () => {
+  for (const prefer of ['phone', 'desktop']) {
+    const matching = mixed.filter(item => hasCut(item, prefer)).length;
+    for (let seed = 1; seed <= 40; seed++) {
+      const last = reelDeck(mixed, DEFAULTS, { random: seeded(seed), prefer }).at(-1), round = nextRound(mixed, DEFAULTS, last, { random: seeded(seed + 100), prefer });
+      assert.ok(round.slice(0, matching).every(item => hasCut(item, prefer)), `${prefer} ${seed}: the round opens with the screen's cuts`);
+      assert.notEqual(round[0].id, last.id, `${prefer} ${seed}: not the film that just played`);
+      assert.notEqual(round[0].product, last.product, `${prefer} ${seed}: not its product either`);
+    }
+    // Every title has the screen's cut, so the last film is in the first part: the boundary rule still holds there.
+    const all = mixed.filter(item => hasCut(item, prefer));
+    for (let seed = 1; seed <= 20; seed++) {
+      const last = reelDeck(all, DEFAULTS, { random: seeded(seed), prefer }).at(-1);
+      assert.notEqual(nextRound(all, DEFAULTS, last, { random: seeded(seed + 7), prefer })[0].id, last.id, `${prefer} ${seed}: one part only, still not the same film`);
+    }
+    assert.deepEqual(ids(nextRound(mixed, NEWEST, mixed[0], { prefer })), ids(reelDeck(mixed, NEWEST, { prefer })), `${prefer}: newest first starts the grouped order again`);
+  }
+});

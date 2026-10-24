@@ -924,6 +924,25 @@ try {
     await context.close();
   });
 
+  await record('Reels play the screen’s version first: phone cuts first on a phone, desktop cuts first on a desktop', async () => {
+    // Demo data with two titles cut only for desktop, so both screens have titles without their cut.
+    const wideOnly = ['amber-room', 'last-light'];
+    const mock = { ...catalog, films: catalog.films.map(f => wideOnly.includes(f.id) ? { ...f, versions: f.versions.filter(v => v.kind === 'desktop') } : f) };
+    for (const [viewport, prefer, phone] of [[PHONE, 'phone', true], [DESKTOP, 'desktop', false]]) {
+      const { context, page } = await session({ viewport, phone });
+      await page.route('**/demo/cinema.json', route => route.fulfill({ json: mock }));
+      await loaded(page);
+      await openReels(page, phone);
+      await reelLive(page);
+      const shapes = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.shape));
+      const matching = shapes.filter(shape => shape === prefer).length;
+      assert.ok(matching > 0 && matching < shapes.length, `${prefer}: the catalog mixes titles with and without a ${prefer} cut (${shapes.join(', ')})`);
+      assert.ok(shapes.slice(0, matching).every(shape => shape === prefer), `${prefer}: every ${prefer} cut plays before any other (${shapes.join(', ')})`);
+      assert.equal(await page.locator('.reel-item.is-active').getAttribute('data-shape'), prefer, `${prefer}: the reel opens on a ${prefer} cut`);
+      await context.close();
+    }
+  });
+
   await record('Reels with reduced motion: a film that ends waits instead of moving on', async () => {
     const { context, page } = await session({ reduced: true });
     await loaded(page);
@@ -990,8 +1009,9 @@ try {
     await page.reload();
     await page.locator('main.library').waitFor();
     await openReels(page);
-    const seen = new Set(), newest = catalog.films.toSorted((a, b) => b.added.localeCompare(a.added)).filter(f => !seen.has(f.group || f.id) && seen.add(f.group || f.id)).map(f => f.id);
-    assert.deepEqual(await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film)), newest, 'newest first');
+    const seen = new Set(), dated = catalog.films.toSorted((a, b) => b.added.localeCompare(a.added)).filter(f => !seen.has(f.group || f.id) && seen.add(f.group || f.id));
+    const wide = f => f.versions.some(v => v.kind === 'desktop'), newest = [...dated.filter(wide), ...dated.filter(f => !wide(f))].map(f => f.id);
+    assert.deepEqual(await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film)), newest, 'newest first, titles with a desktop cut before the phone-only ones');
     assert.equal(await page.locator('.reel-count').getAttribute('title'), 'Newest first');
     await context.close();
   });

@@ -44,10 +44,17 @@ export function toggleKind(kinds, kind) {
 export const reelKinds = groups => Object.fromEntries(KINDS.map(kind => [kind, filterFilms(groups, KIND_FILTER[kind]).length]));
 const pick = (groups, kinds) => groups.filter(group => kinds.some(kind => filterFilms([group], KIND_FILTER[kind]).length));
 // The titles the Reels tab plays, in the chosen order. `groups` come newest first (groupFilms).
-export function reelDeck(groups, settings, { random = Math.random, after = null } = {}) {
+// `prefer` is the screen's cut ('phone' or 'desktop'): titles that have it come first, then the rest, each part in
+// the chosen order (shuffled on its own, or newest first). A shuffled part opens away from the film before it.
+const fits = (group, prefer) => group.versions.some(version => version.kind === prefer);
+export function reelDeck(groups, settings, { random = Math.random, after = null, prefer = null } = {}) {
   const titles = pick(groups, settings.reelKinds);
-  return settings.reelOrder === 'newest' ? titles : shuffleDeck(titles, { random, after });
+  const parts = prefer ? [titles.filter(group => fits(group, prefer)), titles.filter(group => !fits(group, prefer))] : [titles];
+  if (settings.reelOrder === 'newest') return parts.flat();
+  const deck = [];
+  for (const part of parts) if (part.length) deck.push(...shuffleDeck(part, { random, after: deck.at(-1) ?? after }));
+  return deck;
 }
-// The round drawn when a reel nears its end: newest first starts again from the top, shuffle draws a new order
-// that never opens with the film that just played.
+// The round drawn when a reel nears its end, grouped by the screen's cut the same way: newest first starts again
+// from the top, shuffle draws a new order that never opens with the film that just played.
 export const nextRound = (groups, settings, after, options = {}) => reelDeck(groups, settings, { ...options, after });
