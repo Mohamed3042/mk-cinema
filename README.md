@@ -34,6 +34,18 @@ Posters are stored by the **app** in a separate private Cache Storage cache, wit
 
 Settings → **Forget token** removes the stored token and cached private posters, stops pending work, and returns to Connect.
 
+## Invite links
+
+Settings → Invites → **Invite someone** makes a link for one person (Mom, Dad, a friend). Each person gets a key of their own, so one can be stopped without touching the others, and the link works whether or not the owner's PC is on: GitHub serves the app and the library. Design: `docs/superpowers/specs/2026-10-24-invites-design.md`.
+
+1. Type their name. **Make Mom's key on GitHub** opens GitHub's new fine-grained token page pre-filled: name `MK Cinema – Mom`, resource owner `Mohamed3042`, 90 days, Contents: Read-only ([GitHub's URL parameters](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#pre-filling-fine-grained-personal-access-token-details-using-url-parameters)). Repository selection has no parameter: choose **Only select repositories** → `mk-cinema-library` by hand.
+2. Paste the new key. The app refuses its own key, classic keys, a key that cannot read `cinema.json`, and a key that reports a write scope. GitHub does not let an app read a fine-grained key's permissions, so the ready screen asks to check Contents: Read-only on GitHub.
+3. **Share link** (the share sheet; it falls back to copying) or **Copy link**. The link is `<app>/#invite=<base64url of {"v":1,"n":"Mom","t":"<key>"}>`: the key is only in the fragment, which browsers never send to a server.
+
+The invite list (`mkc.invites`, this device only) keeps the name, the key's last four characters, the date and the expiry (GitHub's when the browser can read it, otherwise about 90 days). **Stop access** opens GitHub's token list with one line on what to delete; **Remove from list** only forgets the row.
+
+Opening a link removes the fragment from the address at once (`history.replaceState`), stores the key under `mkc.token` and the name under `mkc.guest`, and shows a welcome ("Mohamed shared his cinema with you") while the library loads behind it. A guest never sees the connect form or GitHub words: Settings shows **Shared by Mohamed** and **Leave**, and a key GitHub no longer accepts shows "This invite has ended. Ask Mohamed for a new link." A device that already holds the owner's key asks before switching.
+
 ## Watch and save
 
 Choose a card or **More info** to open its detail sheet. Pick a cut, then Phone or Desktop when both exist. The sheet also shows the date added, a release link when supplied, and films with the same product. Play opens the player (below). Arabic titles use `dir="auto"` and a local Arabic font.
@@ -70,7 +82,9 @@ Settings is a page (the phone's Settings tab, the desktop gear, and the gear on 
 - **Playback:** Autoplay previews (on by default; off under reduced motion, and the switch says so) · Picture in the player: Fit or Fill.
 - **Reels:** Start with sound (on) · Which titles: Films, Ads, Demos with their counts (all on; the last one stays on) · Order: Shuffle or Newest first · When a film ends: Play the next or Wait.
 - **My List:** Open My List, with the number of saved titles.
+- **Invites** (owner): **Invite someone** and the invite list (see Invite links).
 - **Connection:** the token state in plain words and **Forget token**.
+- **Sharing** (guest, instead of Invites and Connection): Shared by Mohamed, the invite's name, and **Leave**.
 - **About:** number of titles, demo or private collection, and the app shell version this browser holds for offline.
 
 The choices are one JSON key, `mkc.settings` (`settings.js`); a missing or broken value falls back to its default, an older `mkc.autoplay` choice is carried over, and blocked storage keeps the choices for the visit.
