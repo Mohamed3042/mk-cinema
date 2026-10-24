@@ -15,7 +15,7 @@ export function openSheet(dialog, { origin, phone }) {
     frames = [{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }];
     options = { duration: 560, easing: SPRING, fill: 'both' };
   } else if (origin?.width > 0) {
-    frames = [{ transform: flip(origin, to), clipPath: clip(dialog, to, 6) }, { transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px round 8px)' }];
+    frames = [{ transform: flip(origin, to), clipPath: clip(dialog, to, origin) }, { transform: 'translate(0px, 0px) scale(1)', clipPath: REST }];
   } else frames = [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }];
   const animation = dialog.animate(frames, options);
   opening.set(dialog, animation);
@@ -36,7 +36,7 @@ export function closeSheet(dialog, { target, phone, from = 0 }) {
     frames = [{ transform: `translateY(${from}px)` }, { transform: 'translateY(100%)' }];
     options = { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'both' };
   } else if (target?.width > 0) {
-    frames = [{ transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px round 8px)' }, { transform: flip(target, to), clipPath: clip(dialog, to, 6) }];
+    frames = [{ transform: 'translate(0px, 0px) scale(1)', clipPath: REST }, { transform: flip(target, to), clipPath: clip(dialog, to, target) }];
   } else {
     frames = [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }];
     options = { duration: 200, easing: 'ease-in', fill: 'both' };
@@ -45,7 +45,10 @@ export function closeSheet(dialog, { target, phone, from = 0 }) {
 }
 
 const flip = (rect, to) => `translate(${rect.left - to.left}px, ${rect.top - to.top}px) scale(${rect.width / to.width})`;
-const clip = (dialog, to, radius) => `inset(0px 0px ${Math.max(0, to.height - dialog.querySelector('.detail-art').offsetHeight)}px 0px round ${radius}px)`;
+// The clip's corner matches the card's 12 px at the card's size (the dialog is scaled down to it) and the
+// dialog's own 20 px at rest.
+const REST = 'inset(0px 0px 0px 0px round 20px)';
+const clip = (dialog, to, card) => `inset(0px 0px ${Math.max(0, to.height - dialog.querySelector('.detail-art').offsetHeight)}px 0px round ${12 * to.width / card.width}px)`;
 
 // Phone only: pull the sheet down from the top of its content to close it. A fast flick or a pull past 110 px
 // closes; a shorter pull springs back.

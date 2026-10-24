@@ -1,6 +1,8 @@
 # MK Cinema
 
-A private film player for one owner. Plain HTML, CSS, and ES modules. No build step, runtime packages, CDN, analytics, or third-party scripts. The home has tabs, a billboard that plays a muted preview, side-scroll film rows, search, and filters. The canvas is #141414 with MK gold accents.
+A private film player for one owner. Plain HTML, CSS, and ES modules. No build step, runtime packages, CDN, analytics, or third-party scripts. The home has tabs, a billboard that plays a muted preview, side-scroll film rows, search, and filters.
+
+The look is **Liquid Glass**: Netflix's layout in Apple TV calm. The page is ink black (#05060a) lit by the film on show: `ambient.js` shrinks the billboard poster (or, in New & Hot, the playing film's) to a 48 × 27 canvas and lays it under the page as a soft wash of its colours. Controls that float over film are frosted capsules; the one action that matters is a white pill. Titles read as a brand line over a clean name: `splitTitle` in `catalog.js` turns "North Studio — Night Swim (film)" into "NORTH STUDIO" over "Night Swim", and keeps only the bracket notes that add something ("app 0.7.3"). Without backdrop blur, or with "Reduce transparency" on, the same controls sit on solid ink.
 
 This repo holds **no private film data**: no real catalog, titles, posters, videos, or token. `demo/` holds eight made-up entries grouped into seven titles, original sample art, and one 12-second clip per film and shape. `shots/` is local review evidence and is ignored by Git.
 
@@ -40,8 +42,8 @@ Search and chips open a grid with a title count. Clear filters returns to the ho
 
 ### Tabs
 
-- **Desktop:** a top bar with Home, New & Hot, Films, Ads, Demos, My List, search, and settings. It is clear over the billboard and turns solid #141414 within the first 80 px of scroll.
-- **Phone:** a fixed bottom bar with Home, New & Hot, Search, and My List, padded for the iPhone home indicator.
+- **Desktop:** a top bar with Home, New & Hot, Films, Ads, Demos, My List, search, and settings. The tabs sit in one frosted capsule and a white pill slides to the open tab. The bar is clear over the billboard and turns to frosted ink (72 %) within the first 80 px of scroll.
+- **Phone:** a floating frosted capsule with Home, New & Hot, Search, and My List, 10 px above the iPhone home indicator.
 - Films, Ads, and Demos are the home again, limited to that kind. Switching tabs crossfades for 250 ms (a view transition; older browsers get a fade-in).
 - **New & Hot** is a vertical feed of every title, newest first. The film nearest the middle of the screen moves only while you scroll and stops about 50 ms after the last input; scrolling back rewinds it. It is the owner's pop-and-ship scroll film, adapted (`chase` in `motion.js`, `feed.js`).
 - **My List** keeps film ids in `mkc.list` (demo: `mkc.demo.list`). Nothing else is stored, and there is no token. A title with several cuts counts as listed when any cut is.

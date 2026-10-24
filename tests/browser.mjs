@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 import { fileURLToPath } from 'node:url';
 import { serve } from '../scripts/serve.mjs';
+import { splitTitle } from '../catalog.js';
 
 const origin = 'http://127.0.0.1:4173';
 const root = new URL('../', import.meta.url);
@@ -160,9 +161,11 @@ try {
       await page.keyboard.press('Enter');
       const detail = page.locator('#film-detail');
       await detail.locator(`[data-variant="${alternate.id}"]`).click();
-      assert.equal(await detail.locator('.film-title').first().innerText(), alternate.title, 'Variant selects its film');
+      // The sheet shows "Golden Hour — V1" as a brand line over a clean name.
+      assert.equal(await detail.locator('#detail-title').textContent(), splitTitle(alternate.title).name, 'Variant selects its film');
+      assert.equal(await detail.locator('.detail-hero .kicker').textContent(), splitTitle(alternate.title).kicker, 'The brand line names the film');
       await detail.locator(`[data-variant="${primary.id}"]`).click();
-      assert.equal(await detail.locator('.film-title').first().innerText(), primary.title, 'Main cut can be restored');
+      assert.equal(await detail.locator('#detail-title').textContent(), splitTitle(primary.title).name, 'Main cut can be restored');
       await page.keyboard.press('Escape');
       await page.locator('#film-detail').waitFor({ state: 'hidden' });
       await page.locator('[data-action=clear-filter]').click();

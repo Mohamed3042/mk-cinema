@@ -1,5 +1,23 @@
 export const PRODUCTS = ['MK Voice', 'MK Business OS', 'Talent Atlas', 'MK Job Orbit', 'MK Suite & apps', 'More films'];
 const KINDS = ['film', 'ad', 'loop', 'teaser', 'demo', 'reel'];
+const KIND_LABELS = { film: 'Film', reel: 'Reel', ad: 'Ad', loop: 'Loop', teaser: 'Teaser', demo: 'Demo' };
+const RESTATED = new Set([...KINDS, 'عربي', 'arabic']);
+
+export const kindLabel = kind => KIND_LABELS[kind] || 'Film';
+
+// Catalog titles read like file names ("North Studio — Night Swim (film)"). Screens show a brand line, a clean
+// name, and only the bracket notes that add something ("app 0.7.3"); kind and Arabic already have their own labels.
+export function splitTitle(title) {
+  let name = String(title ?? '').trim(), kicker = '', notes = [];
+  const dash = /^(.+?)\s+[—–]\s+(.+)$/u.exec(name);
+  if (dash) [, kicker, name] = dash;
+  const bracket = /^(.+?)\s*\(([^()]+)\)$/u.exec(name);
+  if (bracket) {
+    name = bracket[1];
+    notes = bracket[2].split('·').map(part => part.trim()).filter(part => part && !RESTATED.has(part.toLowerCase()));
+  }
+  return { kicker, name: name.charAt(0).toUpperCase() + name.slice(1), notes };
+}
 
 function normalize(film) {
   return {

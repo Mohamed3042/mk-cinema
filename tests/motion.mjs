@@ -100,18 +100,20 @@ try {
     await context.close();
   });
 
-  await record('top bar is clear over the hero and solid #141414 within 80 px of scroll', async () => {
+  await record('top bar is clear over the hero and frosted ink within 80 px of scroll', async () => {
     const { context, page } = await session();
     await loaded(page);
-    const background = () => page.locator('#topbar').evaluate(el => getComputedStyle(el).backgroundColor);
-    assert.equal(await background(), 'rgba(20, 20, 20, 0)');
+    const look = () => page.locator('#topbar').evaluate(el => { const s = getComputedStyle(el); return { background: s.backgroundColor, frost: s.backdropFilter || s.webkitBackdropFilter }; });
+    assert.equal((await look()).background, 'rgba(5, 6, 10, 0)');
     await page.evaluate(() => scrollTo(0, 40));
     await page.waitForFunction(() => document.querySelector('#topbar').style.getPropertyValue('--bar') === '0.500');
-    const half = Number((await background()).match(/[\d.]+/g)[3]);
-    assert.ok(half > 0.4 && half < 0.6, `Half way down it is half solid (alpha ${half})`);
+    const half = Number((await look()).background.match(/[\d.]+/g)[3]);
+    assert.ok(half > 0.3 && half < 0.42, `Half way down it is half frosted (alpha ${half})`);
     await page.evaluate(() => scrollTo(0, 120));
     await page.waitForFunction(() => document.querySelector('#topbar').style.getPropertyValue('--bar') === '1.000');
-    assert.equal(await background(), 'rgb(20, 20, 20)');
+    const settled = await look();
+    assert.equal(settled.background, 'rgba(5, 6, 10, 0.72)');
+    assert.match(settled.frost, /blur\(26px\)/, 'Settled, it frosts what scrolls under it');
     await context.close();
   });
 
@@ -123,9 +125,9 @@ try {
     assert.equal(await bar.locator('button svg').count(), 4, 'Every tab has an icon');
     assert.equal(await page.locator('.tabs').count(), 0, 'The desktop tabs are not on a phone');
     const rect = await box(page, '#tabbar');
-    assert.ok(Math.abs(rect.bottom - 844) < 1 && rect.width === 390, 'Fixed to the bottom edge');
-    const inset = await page.evaluate(() => [...document.styleSheets].flatMap(sheet => [...sheet.cssRules]).filter(rule => rule.selectorText === '.tabbar').map(rule => rule.style.paddingBottom || rule.cssText).join(' '));
-    assert.match(inset, /safe-area-inset-bottom/, 'The bar pads for the iPhone home indicator');
+    assert.ok(Math.abs(rect.bottom - (844 - 10)) < 1 && Math.abs(rect.width - (390 - 28)) < 1, 'A capsule floating 10 px over the bottom edge, 14 px in from the sides');
+    const inset = await page.evaluate(() => [...document.styleSheets].flatMap(sheet => [...sheet.cssRules]).filter(rule => rule.selectorText === '.tabbar').map(rule => rule.cssText).join(' '));
+    assert.match(inset, /safe-area-inset-bottom/, 'The bar keeps clear of the iPhone home indicator');
     await waitState(page, 'playing');
     await shot(page, 'home');
     await bar.getByRole('button', { name: 'New & Hot' }).click();
@@ -218,7 +220,7 @@ try {
     assert.ok(bob.top < (await box(page, `${ROW} .card`)).top, 'It rises above its neighbours');
     const buttons = await page.locator('.bob [data-bob]').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
     assert.match(buttons[0], /^Play /); assert.match(buttons[1], /^Add to My List: /); assert.match(buttons[2], /^More info: /);
-    assert.match(await page.locator('.bob-meta').innerText(), /NEW\s*0:12\s*film/);
+    assert.match(await page.locator('.bob-meta').innerText(), /NEW\s*0:12\s*Film/);
     const opened = await page.evaluate(() => window.__t.bob);
     await page.waitForFunction(() => document.querySelector('.bob')?.classList.contains('is-playing'), null, { timeout: 8000 });
     const playing = await page.evaluate(() => ({ at: performance.now(), t: document.querySelector('.bob video').currentTime, paused: document.querySelector('.bob video').paused, muted: document.querySelector('.bob video').muted }));
@@ -676,6 +678,9 @@ try {
     await page.locator('#tabbar').getByRole('button', { name: 'New & Hot' }).click();
     await page.locator('.hot-item[data-live=true]').waitFor({ timeout: 10000 });
     await shot(page, 'new-and-hot');
+    // Centre the second film first, so the 100 px scroll below stays on it whatever height the copy has.
+    await page.evaluate(() => { const r = document.querySelectorAll('.hot-stage')[1].getBoundingClientRect(); scrollBy(0, r.top + r.height / 2 - innerHeight / 2); });
+    await page.waitForFunction(() => document.querySelector('.hot-item[data-active]') === document.querySelectorAll('.hot-item')[1]);
     const read = () => page.evaluate(() => { const item = document.querySelector('.hot-item[data-active]'); const v = item?.querySelector('video'); return { id: item?.dataset.film, t: v?.currentTime, paused: v?.paused, live: item?.classList.contains('is-live') }; });
     await page.waitForFunction(() => document.querySelector('.hot-item[data-active] video')?.paused === true);
     const first = await read();
@@ -724,9 +729,11 @@ try {
       const [high, low] = [luminance(fg), luminance(under)].sort((a, b) => b - a);
       return (high + 0.05) / (low + 0.05);
     }, background);
-    for (const [selector, background] of [['.tab:not([aria-current])', '#141414'], ['.tab[aria-current]', '#141414'], ['.shelf-count', '#141414'], ['.filter-chip[aria-pressed=false]', '#141414'], ['.filter-chip[aria-pressed=true]', '#d8b777']]) assert.ok(await ratio(selector, background) >= 4.5, `${selector} passes AA`);
+    // Backgrounds are the Liquid Glass surfaces each text sits on: the tab capsule over frosted ink, the white
+    // pills, the ink page, the smoked chip glass, and the details panel (a selected version is 10 % lighter).
+    for (const [selector, background] of [['.tab:not([aria-current])', '#1e1f24'], ['.tab[aria-current]', '#ffffff'], ['.shelf-count', '#05060a'], ['.filter-chip[aria-pressed=false]', '#08090d'], ['.filter-chip[aria-pressed=true]', '#ffffff']]) assert.ok(await ratio(selector, background) >= 4.5, `${selector} passes AA`);
     await page.locator('.film-card[data-film="last-light"]').first().click();
-    for (const [selector, background] of [['.detail-meta span:nth-child(2)', '#181818'], ['.ep-copy small', '#2f2f2f'], ['.date-added', '#181818'], ['.episode:not(.selected) .ep-n', '#181818']]) assert.ok(await ratio(`#film-detail ${selector}`, background) >= 4.5, `${selector} passes AA`);
+    for (const [selector, background] of [['.detail-meta span:nth-child(2)', '#14161d'], ['.ep-copy small', '#2c2d34'], ['.date-added', '#14161d'], ['.episode:not(.selected) .ep-n', '#14161d']]) assert.ok(await ratio(`#film-detail ${selector}`, background) >= 4.5, `${selector} passes AA`);
     await page.keyboard.press('Escape');
     await page.locator('#film-detail').waitFor({ state: 'detached' });
     assert.equal(await page.locator('.paddle-next').first().getAttribute('aria-label'), 'Next titles: New this week');
@@ -788,9 +795,9 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v4'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js']) assert.ok(cached['mkc-shell-v4'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v4'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v5'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js']) assert.ok(cached['mkc-shell-v5'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v5'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await context.close();
   });
 } finally {

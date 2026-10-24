@@ -1,5 +1,6 @@
 import { EASE, T, bobRect, claimPreview, reduced } from './motion.js';
 import { startPreview } from './previews.js';
+import { splitTitle, kindLabel } from './catalog.js';
 
 const DESKTOP = '(hover: hover) and (pointer: fine) and (min-width: 900px)';
 const SCALE = 1.5, PANEL = 112;
@@ -63,20 +64,21 @@ export function createBob({ host, find, posterURL, source, enabled, autoplay, li
     const bounds = area.classList.contains('row-viewport')
       ? { left: box.left + parseFloat(pad.paddingLeft), right: box.right - parseFloat(pad.paddingRight) } : { left: box.left, right: box.right };
     const rect = bobRect({ card: c, bounds, view: { w: innerWidth, h: innerHeight, top: topOffset() }, scale: SCALE, panel: PANEL });
-    const on = listed(film);
+    const on = listed(film), { kicker, name } = splitTitle(film.title);
     const el = document.createElement('div');
     el.className = 'bob'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', `Preview: ${film.title}`);
     el.dataset.film = film.id; el.dataset.edge = rect.edge; el.dataset.state = 'opening';
-    el.innerHTML = `<div class="bob-media"><img class="bob-poster" alt="" src="${esc(posterURL(film))}"><video class="bob-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><span class="bob-title film-title" dir="auto">${esc(film.title)}</span></div><div class="bob-panel"><div class="bob-actions"><button class="bob-button bob-play" data-bob="play" aria-label="Play ${esc(film.title)}">${icon('play')}</button><button class="bob-button" data-bob="list" aria-pressed="${on}" aria-label="${on ? 'Remove from My List' : 'Add to My List'}: ${esc(film.title)}">${icon(on ? 'check' : 'plus')}</button><button class="bob-button bob-info" data-bob="info" aria-label="More info: ${esc(film.title)}">${icon('chevron')}</button></div><p class="bob-meta">${isNew(film) ? '<span class="new-badge">NEW</span>' : ''}<span>${duration(film.seconds)}</span><span>${esc(film.kind)}</span>${film.lang === 'ar' ? '<span>Arabic</span>' : ''}</p></div>`;
+    el.innerHTML = `<div class="bob-media"><img class="bob-poster" alt="" src="${esc(posterURL(film))}"><video class="bob-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><span class="bob-title film-title" dir="auto">${kicker ? `<small class="card-kicker">${esc(kicker)}</small>` : ''}${esc(name)}</span></div><div class="bob-panel"><div class="bob-actions"><button class="bob-button bob-play" data-bob="play" aria-label="Play ${esc(film.title)}">${icon('play')}</button><button class="bob-button" data-bob="list" aria-pressed="${on}" aria-label="${on ? 'Remove from My List' : 'Add to My List'}: ${esc(film.title)}">${icon(on ? 'check' : 'plus')}</button><button class="bob-button bob-info" data-bob="info" aria-label="More info: ${esc(film.title)}">${icon('chevron')}</button></div><p class="bob-meta">${isNew(film) ? '<span class="new-badge">NEW</span>' : ''}<span>${duration(film.seconds)}</span><span>${kindLabel(film.kind)}</span>${film.lang === 'ar' ? '<span>Arabic</span>' : ''}</p></div>`;
     Object.assign(el.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px` });
     el.querySelector('.bob-poster').classList.add('is-ready');
     document.body.append(el);
     const from = `translate(${c.left - rect.left}px, ${c.top - rect.top}px) scale(${c.width / rect.width}, ${c.height / rect.media})`;
     // Only the picture shows while it grows (the clip hides the panel); once settled the clip is gone, so the shadow shows.
+    // The clip starts at the card's 12 px corner (as seen through the scale) and ends at the card's own 16 px.
     const panelHeight = el.querySelector('.bob-panel').offsetHeight;
     const grow = el.animate([
-      { transform: from, clipPath: `inset(0px 0px ${panelHeight}px 0px round 6px)` },
-      { transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 6px)' },
+      { transform: from, clipPath: `inset(0px 0px ${panelHeight}px 0px round ${12 * rect.width / c.width}px)` },
+      { transform: 'none', clipPath: 'inset(0px 0px 0px 0px round 16px)' },
     ], { duration: T.bobGrow, easing: EASE, fill: 'backwards' });
     const slide = el.querySelector('.bob-panel').animate([{ opacity: 0, transform: 'translateY(-16px)' }, { opacity: 1, transform: 'none' }], { duration: T.bobPanel, delay: T.bobGrow * 0.55, easing: EASE, fill: 'both' });
     const bob = open = { el, card, film, grow, slide, closing: false, preview: null, release: null };

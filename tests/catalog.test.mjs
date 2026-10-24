@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupFilms, filterFilms, readProgress, saveProgress, continueFilms } from '../catalog.js';
+import { groupFilms, filterFilms, readProgress, saveProgress, continueFilms, splitTitle, kindLabel } from '../catalog.js';
 
 const film = (id, fields = {}) => ({ id, title: id, added: '2026-10-22', versions: [{ kind: 'phone' }], seconds: 100, ...fields });
 const storage = () => ({ data: new Map(), getItem(key) { return this.data.get(key) ?? null; }, setItem(key, value) { this.data.set(key, value); } });
@@ -80,4 +80,34 @@ test('continue watching uses latest watched variant and hides completed, empty, 
   progress.cut.time = 100;
   assert.deepEqual(continueFilms(groups, progress).map(item => item.resumeFilmId), ['other']);
   assert.deepEqual(continueFilms(groups, {}), []);
+});
+
+test('titles split into a brand line, a clean name, and notes that add something', () => {
+  const split = title => splitTitle(title);
+  assert.deepEqual(split('North Studio — Night Swim (film)'), { kicker: 'North Studio', name: 'Night Swim', notes: [] });
+  assert.deepEqual(split('North Studio — reel'), { kicker: 'North Studio', name: 'Reel', notes: [] });
+  assert.deepEqual(split('Lumen App — Demo (app 0.7.3)'), { kicker: 'Lumen App', name: 'Demo', notes: ['app 0.7.3'] });
+  assert.deepEqual(split('Lumen App — Sales & Support, Arabic-led cut (demo · عربي)'), { kicker: 'Lumen App', name: 'Sales & Support, Arabic-led cut', notes: [] });
+  assert.deepEqual(split('Lumen App — Second Look (series)').notes, ['series']);
+  assert.deepEqual(split('Rose Atelier — launch reel (9:16 · عربي)'), { kicker: 'Rose Atelier', name: 'Launch reel', notes: ['9:16'] });
+  assert.deepEqual(split('Trilogy — Three rooms. One door.'), { kicker: 'Trilogy', name: 'Three rooms. One door.', notes: [] });
+  assert.deepEqual(split('Golden Hour — V1'), { kicker: 'Golden Hour', name: 'V1', notes: [] });
+  assert.deepEqual(split('A – B — C'), { kicker: 'A', name: 'B — C', notes: [] });
+});
+
+test('titles without a brand line stay whole; odd input never empties a title', () => {
+  assert.deepEqual(splitTitle('Salt & Pepper'), { kicker: '', name: 'Salt & Pepper', notes: [] });
+  assert.deepEqual(splitTitle('رحلة الضوء'), { kicker: '', name: 'رحلة الضوء', notes: [] });
+  assert.deepEqual(splitTitle('Day-to-day - plan'), { kicker: '', name: 'Day-to-day - plan', notes: [] });
+  assert.deepEqual(splitTitle('Prof. Sample — Thank-you film (عربي)'), { kicker: 'Prof. Sample', name: 'Thank-you film', notes: [] });
+  assert.equal(splitTitle('(عربي)').name, '(عربي)');
+  assert.equal(splitTitle('Brand — (x)').name, '(x)');
+  assert.deepEqual(splitTitle(undefined), { kicker: '', name: '', notes: [] });
+  assert.equal(splitTitle('  Spaced title  ').name, 'Spaced title');
+});
+
+test('kind labels read as words, unknown kinds fall back to Film', () => {
+  assert.deepEqual(['film', 'reel', 'ad', 'loop', 'teaser', 'demo'].map(kindLabel), ['Film', 'Reel', 'Ad', 'Loop', 'Teaser', 'Demo']);
+  assert.equal(kindLabel('trailer'), 'Film');
+  assert.equal(kindLabel(undefined), 'Film');
 });
