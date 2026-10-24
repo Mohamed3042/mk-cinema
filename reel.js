@@ -51,7 +51,8 @@ const STOP_AFTER = 3; // films in a row that fail before the reel stops moving o
 export function mountReel(root, { source, icon, sound = true, advance = () => true, resume = null, onActive = () => {}, onError = () => {}, say = () => {}, more = () => false }) {
   const reel = root.querySelector('.reel'), track = reel.querySelector('.reel-track'), video = reel.querySelector('.reel-video');
   const count = reel.querySelector('.reel-count b'), note = reel.querySelector('.reel-note'), soundButton = reel.querySelector('[data-reel=sound]');
-  let active = null, playback = null, frame = 0, timer = 0, held = false, soundOn = sound, failures = 0, told = false, sampled = 0, from = 0;
+  // `wanted` is the owner's choice; `soundOn` is what plays now, which a browser refusing sound can turn off.
+  let active = null, playback = null, frame = 0, timer = 0, held = false, soundOn = sound, wanted = sound, failures = 0, told = false, sampled = 0, from = 0;
 
   const items = () => [...track.querySelectorAll('.reel-item')];
   const observer = globalThis.IntersectionObserver && new IntersectionObserver(entries => {
@@ -61,6 +62,7 @@ export function mountReel(root, { source, icon, sound = true, advance = () => tr
 
   function setSound(on, refused = false) {
     soundOn = on; video.muted = !on;
+    if (!refused) wanted = on;
     soundButton.setAttribute('aria-label', on ? 'Mute' : 'Turn sound on');
     soundButton.innerHTML = icon(on ? 'sound' : 'mute');
     reel.classList.toggle('is-quiet', refused && !on); // "Tap for sound" while the browser keeps the films muted
@@ -179,7 +181,7 @@ export function mountReel(root, { source, icon, sound = true, advance = () => tr
     snapshot() {
       const index = items().indexOf(active), time = video.currentTime || 0;
       const done = !active || active.classList.contains('is-ended') || active.classList.contains('is-failed') || (video.duration && time > video.duration - 1);
-      return { index: Math.max(0, index), time: done ? 0 : time, sound: soundOn };
+      return { index: Math.max(0, index), time: done ? 0 : time, sound: wanted };
     },
     destroy() {
       observer?.disconnect(); playback?.stop(); cancelAnimationFrame(frame); clearTimeout(timer);

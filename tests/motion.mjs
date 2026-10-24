@@ -288,6 +288,10 @@ try {
     assert.equal(await page.locator('#film-detail .list-toggle').getAttribute('aria-pressed'), 'true', 'The sheet agrees with the list');
     await page.keyboard.press('Escape');
     await page.locator('#film-detail').waitFor({ state: 'detached' });
+    // The film just added puts a My List row on Home as the sheet closes; hover once the rows have settled.
+    await page.locator('.shelf[data-row="My List"]').waitFor();
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(300);
     await hoverCard(page, 2);
     await page.waitForFunction(() => document.querySelector('.bob')?.dataset.state === 'open');
     await page.locator('.bob [data-bob=play]').click();
@@ -992,6 +996,27 @@ try {
     await context.close();
   });
 
+  await record('Reels: a browser that refused sound once does not keep the reel muted on the next visit', async () => {
+    const { context, page } = await session();
+    await page.addInitScript(() => {
+      const play = HTMLMediaElement.prototype.play;
+      window.refuseSound = true;
+      HTMLMediaElement.prototype.play = function () {
+        return window.refuseSound && !this.muted ? Promise.reject(new DOMException('No sound yet', 'NotAllowedError')) : play.call(this);
+      };
+    });
+    await loaded(page);
+    await openReels(page);
+    await page.locator('.reel.is-quiet').waitFor();
+    await page.evaluate(() => { window.refuseSound = false; });
+    await page.locator('.tab[data-tab=home]').click();
+    await page.locator('main.library').waitFor();
+    await openReels(page);
+    await reelLive(page);
+    assert.equal(await page.locator('.reel-video').evaluate(video => video.muted), false, 'the owner never muted, so the next tap brings the sound back');
+    await context.close();
+  });
+
   await record('Reels with nothing to play: a calm empty state with a way to Settings and a way home', async () => {
     const { context, page } = await session();
     await page.route('**/demo/cinema.json', route => route.fulfill({ json: { ...catalog, films: catalog.films.filter(f => f.kind !== 'demo') } }));
@@ -1067,6 +1092,26 @@ try {
     assert.ok(cached['mkc-shell-v8'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
     assert.equal(await page.locator('#shell-version').innerText(), 'v8 · saved for offline', 'Settings → About names the shell this browser holds');
+    await context.close();
+  });
+
+  // Real films stream from GitHub, another origin, so the reel cannot read their frames. Trying must not leave the
+  // posters unreadable for the rest of the visit (no light under the page, no shade under pale posters).
+  await record('a frame from another origin never stops the posters lighting the page', async () => {
+    const { context, page } = await session();
+    await page.route('**/favicon.ico', route => route.fulfill({ status: 204 })); // a bare script page asks for one
+    await page.goto(`${origin}/ambient.js`);
+    const result = await page.evaluate(async foreign => {
+      const { paleness, wash } = await import('/ambient.js');
+      const video = Object.assign(document.createElement('video'), { muted: true, preload: 'auto', src: foreign });
+      await new Promise((resolve, reject) => { video.onloadeddata = resolve; video.onerror = () => reject(new Error('the foreign film did not load')); });
+      const poster = Object.assign(new Image(), { src: '/demo/posters/amber-room.jpg' });
+      await poster.decode();
+      return { frame: paleness(video), lit: Boolean(wash(poster)), pale: paleness(poster) };
+    }, 'http://localhost:4173/demo/amber-room-phone.mp4');
+    assert.equal(result.frame, null, 'A frame from another origin cannot be read');
+    assert.ok(result.lit, 'The poster still lights the page');
+    assert.notEqual(result.pale, null, 'The poster is still read for its shade');
     await context.close();
   });
 } finally {

@@ -6,11 +6,14 @@ const W = 48, H = 27;
 let canvas;
 
 // The poster (or the film's current frame) drawn small, cover like the poster itself, or null while it has not loaded.
+// A film's frame gets a canvas of its own: a stream from another origin (GitHub) makes any canvas it touches
+// unreadable for good, and the shared one must stay readable for the posters.
 function draw(img) {
   const width = img?.naturalWidth || img?.videoWidth, height = img?.naturalHeight || img?.videoHeight;
   if (!width || img.complete === false) return null;
-  canvas ||= Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const blank = () => Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const surface = img.videoWidth ? blank() : (canvas ||= blank());
+  const ctx = surface.getContext('2d', { willReadFrequently: true });
   const scale = Math.max(W / width, H / height);
   const w = width * scale, h = height * scale;
   ctx.clearRect(0, 0, W, H);
@@ -54,7 +57,7 @@ export function wash(img) {
     if (!ctx) return '';
     const dim = dimFor(ctx.getImageData(0, 0, W, H).data);
     if (dim) { ctx.fillStyle = `rgba(0,0,0,${dim.toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
-    return canvas.toDataURL('image/png');
+    return ctx.canvas.toDataURL('image/png');
   } catch { return ''; } // never expected: posters are same-origin blobs, so the canvas stays readable
 }
 
