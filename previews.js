@@ -6,10 +6,11 @@ import { PREVIEW_START } from './motion.js';
 // onPlaying fires once a frame is on screen, after the jump to `start`, so the poster never flashes the first frame.
 // With `sound` (the Shuffle reel) it plays unmuted; if the browser refuses that, it carries on muted and calls onMuted.
 // With `recover` (whole films in the reel) a film that breaks after it started gets one fresh link and carries on
-// where it was, as the player does. onFail gets the error when the address itself could not be had.
-export function startPreview(video, { getURL, canDownload = false, start = PREVIEW_START, sound = false, recover = false, onPlaying = () => {}, onEnded = () => {}, onFail = () => {}, onMuted = () => {} }) {
+// where it was, as the player does. `from` (seconds) starts there instead of at `start` (the reel coming back to a
+// film it left). onFail gets the error when the address itself could not be had.
+export function startPreview(video, { getURL, canDownload = false, start = PREVIEW_START, from = 0, sound = false, recover = false, onPlaying = () => {}, onEnded = () => {}, onFail = () => {}, onMuted = () => {} }) {
   const abort = new AbortController();
-  let dead = false, attempt = 0, loaded = false, seeking = false, shown = false, resumeAt = 0;
+  let dead = false, attempt = 0, loaded = false, seeking = false, shown = false, resumeAt = from > 0 ? from : 0;
   video.muted = !sound; video.playsInline = true; video.preload = 'auto'; video.loop = false;
 
   const stop = () => {

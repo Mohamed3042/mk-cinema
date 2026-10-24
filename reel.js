@@ -2,8 +2,8 @@ import { reduced } from './motion.js';
 import { startPreview } from './previews.js';
 import { paleness } from './ambient.js';
 
-// Shuffle: the whole cinema as a reel. One film fills the screen and plays from the start; at its end the next one
-// comes up, and a swipe, the wheel or the arrow keys move back and forth. The order is new every time it opens.
+// Reels: the cinema as a reel. One film fills the screen and plays from the start; at its end the next one comes
+// up (or it waits, as the owner chose in Settings), and a swipe, the wheel or the arrow keys move back and forth.
 
 const same = (a, b) => Boolean(a && b) && (a === b || (a.id !== undefined && a.id === b.id));
 
@@ -45,11 +45,13 @@ export function shuffleDeck(items, { random = Math.random, key = item => item.pr
 // moves into whichever film is on screen: once the opening tap has started it, an iPhone lets it play with sound
 // for every film after. source(id, shape) gives { getURL, canDownload } for that cut (the player's streams).
 // onError gets the errors only the app can answer (token, access, rate limit); say() speaks to screen readers.
+// sound: start with sound. advance(): move on when a film ends (else it waits). resume: { index, time } comes back
+// to the film the reel showed when it was left, where it was. snapshot() gives that for the next visit.
 const STOP_AFTER = 3; // films in a row that fail before the reel stops moving on by itself
-export function mountReel(root, { source, icon, onActive = () => {}, onClose = () => {}, onError = () => {}, say = () => {}, more = () => false }) {
+export function mountReel(root, { source, icon, sound = true, advance = () => true, resume = null, onActive = () => {}, onError = () => {}, say = () => {}, more = () => false }) {
   const reel = root.querySelector('.reel'), track = reel.querySelector('.reel-track'), video = reel.querySelector('.reel-video');
   const count = reel.querySelector('.reel-count b'), note = reel.querySelector('.reel-note'), soundButton = reel.querySelector('[data-reel=sound]');
-  let active = null, playback = null, frame = 0, timer = 0, held = false, soundOn = true, failures = 0, told = false, sampled = 0;
+  let active = null, playback = null, frame = 0, timer = 0, held = false, soundOn = sound, failures = 0, told = false, sampled = 0, from = 0;
 
   const items = () => [...track.querySelectorAll('.reel-item')];
   const observer = globalThis.IntersectionObserver && new IntersectionObserver(entries => {
@@ -95,8 +97,9 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
     stage.insertBefore(video, stage.querySelector('.reel-shade'));
     count.textContent = `${item.dataset.n} / ${reel.dataset.total}`;
     onActive(item);
+    from = item === resumed ? resume.time : 0; resumed = null;
     playback = startPreview(video, {
-      ...source(item.dataset.film, item.dataset.shape), start: 0, sound: soundOn, recover: true,
+      ...source(item.dataset.film, item.dataset.shape), start: 0, from, sound: soundOn, recover: true,
       onPlaying: () => { failures = 0; item.classList.add('is-live'); if (held) video.pause(); tick(); },
       onEnded: () => ended(item),
       onFail: error => failed(item, error),
@@ -110,10 +113,11 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
     const all = items(), next = all[all.indexOf(active) + step];
     if (next) track.scrollTo({ top: next.offsetTop, behavior: reduced() ? 'auto' : 'smooth' });
   }
-  // With reduced motion nothing moves on by itself: a film that ends, or cannot play, waits for a swipe.
+  // With reduced motion, or "When a film ends: Wait", nothing moves on by itself: a film that ends waits for a
+  // swipe or a tap (which plays it again).
   function ended(item) {
     if (item !== active) return;
-    if (reduced()) { item.classList.add('is-ended'); reel.classList.add('is-paused'); } else go(1);
+    if (reduced() || !advance()) { item.classList.add('is-ended'); reel.classList.add('is-paused'); } else go(1);
   }
   // A film that cannot play moves on after 2.5 s, but a run of them (no connection, GitHub down) stops the reel
   // rather than spinning through the whole cinema; a token, access or rate-limit problem goes back to the app.
@@ -144,7 +148,7 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
   function onClick(event) {
     const button = event.target.closest('[data-reel]');
     if (button) {
-      ({ close: onClose, sound: () => setSound(!soundOn), next: () => go(1), prev: () => go(-1), fullscreen })[button.dataset.reel]?.();
+      ({ sound: () => setSound(!soundOn), next: () => go(1), prev: () => go(-1), fullscreen })[button.dataset.reel]?.();
       return;
     }
     if (!event.target.closest('button, a') && event.target.closest('.reel-item')) togglePause();
@@ -156,7 +160,6 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
     else if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'k') go(-1);
     else if (event.key === ' ' && !onButton) togglePause();
     else if (event.key === 'm') setSound(!soundOn);
-    else if (event.key === 'Escape') onClose();
     else return;
     event.preventDefault();
   }
@@ -165,9 +168,19 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
   reel.addEventListener('click', onClick);
   document.addEventListener('keydown', onKey);
   document.addEventListener('visibilitychange', onHide);
+  setSound(soundOn);
+  // Coming back: the track starts on the film it was left on, so the observer picks that one first.
+  let resumed = resume && items()[resume.index] || null;
+  if (resumed) track.scrollTop = resumed.offsetTop;
   watch();
-  if (!observer) activate(items()[0]);
+  if (!observer) activate(resumed || items()[0]);
   return {
+    // Where the reel is, for coming back within the visit. A film that ended or failed starts again from its start.
+    snapshot() {
+      const index = items().indexOf(active), time = video.currentTime || 0;
+      const done = !active || active.classList.contains('is-ended') || active.classList.contains('is-failed') || (video.duration && time > video.duration - 1);
+      return { index: Math.max(0, index), time: done ? 0 : time, sound: soundOn };
+    },
     destroy() {
       observer?.disconnect(); playback?.stop(); cancelAnimationFrame(frame); clearTimeout(timer);
       reel.removeEventListener('click', onClick);
