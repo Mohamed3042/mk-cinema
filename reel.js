@@ -58,7 +58,25 @@ export function mountReel(root, { source, icon, sound = true, advance = () => tr
   const observer = globalThis.IntersectionObserver && new IntersectionObserver(entries => {
     for (const entry of entries) if (entry.isIntersecting) activate(entry.target);
   }, { root: track, threshold: 0.6 });
-  const watch = () => items().forEach(item => { if (!item.dataset.watched) { item.dataset.watched = '1'; observer?.observe(item); } });
+  // Where a 16:9 film sits on a portrait phone (motion.css): between the counter (--reel-head) and the copy and rail
+  // (--reel-room, per film, as titles wrap differently), so neither covers it. Measured again when anything resizes.
+  function place() {
+    const box = reel.getBoundingClientRect();
+    const tops = [...reel.querySelectorAll('.reel-rail button')].map(button => button.getBoundingClientRect()).filter(r => r.width > 2).map(r => r.top - box.top);
+    const rail = tops.length ? Math.min(...tops) : box.height;
+    reel.style.setProperty('--reel-head', `${Math.round(reel.querySelector('.reel-count').getBoundingClientRect().bottom - box.top + 8)}px`);
+    for (const item of items()) {
+      const copy = item.querySelector('.reel-copy'), first = copy.firstElementChild;
+      const top = Math.min(copy.offsetTop + (first ? first.offsetTop : 0), rail);
+      item.style.setProperty('--reel-room', `${Math.round(item.clientHeight - top + 8)}px`);
+    }
+  }
+  const resizes = globalThis.ResizeObserver && new ResizeObserver(() => place());
+  resizes?.observe(track);
+  const watch = () => {
+    items().forEach(item => { if (!item.dataset.watched) { item.dataset.watched = '1'; observer?.observe(item); resizes?.observe(item.querySelector('.reel-copy')); } });
+    place();
+  };
 
   function setSound(on, refused = false) {
     soundOn = on; video.muted = !on;
@@ -184,7 +202,7 @@ export function mountReel(root, { source, icon, sound = true, advance = () => tr
       return { index: Math.max(0, index), time: done ? 0 : time, sound: wanted };
     },
     destroy() {
-      observer?.disconnect(); playback?.stop(); cancelAnimationFrame(frame); clearTimeout(timer);
+      observer?.disconnect(); resizes?.disconnect(); playback?.stop(); cancelAnimationFrame(frame); clearTimeout(timer);
       reel.removeEventListener('click', onClick);
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', onHide);

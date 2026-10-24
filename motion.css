@@ -229,10 +229,12 @@ section.reel{--reel-clear:calc(84px + env(safe-area-inset-bottom));position:fixe
 .reel-video{opacity:0;transition:opacity .4s var(--ease)}
 .reel-item.is-live .reel-video{opacity:1}
 /* A cut in the screen's own shape fills it; any other is shown whole over a blur of its poster. */
-@media(orientation:portrait){.reel-item[data-shape=phone] .reel-video{object-fit:cover}}
-@media(orientation:landscape){.reel-item[data-shape=desktop] .reel-video{object-fit:cover}}
-.reel-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.66) 34%,rgba(0,0,0,0) 62%),linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,0) 16%)}
-.reel-shade::after{content:"";position:absolute;inset:0;opacity:var(--pale,0);transition:opacity .8s;background:linear-gradient(0deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.75) 36%,rgba(0,0,0,0) 62%)}
+/* Every film is shown whole (contain) over the blur of its poster, never cropped and never the player's Fill. On a
+   portrait phone a 16:9 film sits between the counter and the copy and rail (--reel-head, --reel-room: reel.js), so
+   nothing covers it; a 9:16 film fills the height and the copy overlaps its foot under the light shade, as in TikTok. */
+@media(max-width:899px) and (orientation:portrait){.reel-item[data-shape=desktop] :is(.reel-poster,.reel-video){top:var(--reel-head,calc(56px + env(safe-area-inset-top)));height:calc(100% - var(--reel-head,calc(56px + env(safe-area-inset-top))) - var(--reel-room,45%))}}
+.reel-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,rgba(0,0,0,.6) 0%,rgba(0,0,0,.42) 24%,rgba(0,0,0,0) 44%),linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,0) 16%)}
+.reel-shade::after{content:"";position:absolute;inset:0;opacity:var(--pale,0);transition:opacity .8s;background:linear-gradient(0deg,rgba(0,0,0,.66) 0%,rgba(0,0,0,.55) 32%,rgba(0,0,0,0) 50%)}
 .reel-progress{position:absolute;inset:auto 0 var(--reel-clear);height:3px;background:#fff;transform:scaleX(var(--p,0));transform-origin:left;opacity:0;transition:opacity .3s}
 .reel-item.is-live .reel-progress{opacity:.9}
 .reel-copy{position:absolute;inset:auto 72px 0 0;z-index:1;padding:0 0 calc(var(--reel-clear) + 20px) max(20px,env(safe-area-inset-left));pointer-events:none}

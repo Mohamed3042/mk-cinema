@@ -897,7 +897,7 @@ try {
     await context.close();
   });
 
-  await record('Reels on a phone: the tab bar stays and covers nothing; a swipe moves on, a 9:16 cut fills the screen, the reel never runs out', async () => {
+  await record('Reels on a phone: the tab bar stays and covers nothing; a swipe moves on, a 9:16 cut is shown whole, the reel never runs out', async () => {
     const { context, page } = await session({ viewport: PHONE, phone: true });
     await loaded(page);
     await openReels(page, true);
@@ -909,7 +909,7 @@ try {
     const covered = await page.locator('.reel-item.is-active .reel-copy > *, .reel-rail button:not(.reel-step), .reel-item.is-active .reel-progress').evaluateAll((nodes, top) => nodes.filter(el => el.getBoundingClientRect().bottom > top - 4).map(el => el.className || el.tagName), barTop);
     assert.deepEqual(covered, [], 'titles, controls and the progress line all sit above the tab bar');
     const active = await page.locator('.reel-item.is-active').evaluate(item => ({ shape: item.dataset.shape, fit: getComputedStyle(item.querySelector('.reel-video')).objectFit }));
-    assert.equal(active.fit, active.shape === 'phone' ? 'cover' : 'contain', 'a phone cut fills the portrait screen; a wide one is shown whole');
+    assert.equal(active.fit, 'contain', 'every cut is shown whole, never cropped');
     await page.touchscreen.tap(195, 420);
     assert.equal(await page.locator('.reel.is-paused').count(), 1, 'a tap on the film pauses it');
     await page.touchscreen.tap(195, 420);
@@ -924,6 +924,97 @@ try {
     await page.locator('#tabbar [data-tab=home]').tap();
     await page.locator('main.library[data-tab=home]').waitFor();
     await context.close();
+  });
+
+  // Where a film really shows: the content box of an <img>/<video> under its object-fit (centred, as the reel keeps it).
+  const shownBox = el => {
+    const r = el.getBoundingClientRect(), style = getComputedStyle(el);
+    const w = el.videoWidth || el.naturalWidth, h = el.videoHeight || el.naturalHeight;
+    if (!w || !h || style.objectPosition !== '50% 50%') return null;
+    const scale = style.objectFit === 'cover' ? Math.max(r.width / w, r.height / h) : style.objectFit === 'contain' ? Math.min(r.width / w, r.height / h) : null;
+    if (!scale) return null;
+    const width = w * scale, height = h * scale, left = r.left + (r.width - width) / 2, top = r.top + (r.height - height) / 2;
+    return { fit: style.objectFit, left, top, right: left + width, bottom: top + height };
+  };
+  const TALL = { width: 440, height: 956 };
+  await record('Reels show every film whole: a 9:16 and a 16:9 cut stay inside the screen; on a phone a 16:9 film sits above the copy', async () => {
+    // Demo data with Amber Room cut only for desktop (a 16:9 film on a phone); Velvet Steps is cut only for phones.
+    const mock = { ...catalog, films: catalog.films.map(f => f.id === 'amber-room' ? { ...f, versions: f.versions.filter(v => v.kind === 'desktop') } : f) };
+    const problems = [];
+    for (const [viewport, phone] of [[PHONE, true], [TALL, true], [DESKTOP, false]]) {
+      const { context, page } = await session({ viewport, phone });
+      await page.route('**/demo/cinema.json', route => route.fulfill({ json: mock }));
+      await loaded(page);
+      await openReels(page, phone);
+      await reelLive(page);
+      for (const shape of ['phone', 'desktop']) {
+        const at = `${viewport.width}×${viewport.height} ${shape === 'phone' ? '9:16' : '16:9'}`;
+        await page.locator('.reel-track').evaluate((track, wanted) => { track.scrollTop = track.querySelector(`.reel-item[data-shape=${wanted}]`).offsetTop; }, shape);
+        await page.waitForFunction(wanted => document.querySelector('.reel-item.is-active.is-live')?.dataset.shape === wanted, shape, { timeout: 12000 });
+        await page.waitForTimeout(400);
+        const seen = await page.locator('.reel-item.is-active').evaluate((item, fn) => {
+          const shown = new Function(`return ${fn}`)();
+          const reel = item.closest('.reel').getBoundingClientRect();
+          const rail = [...document.querySelectorAll('.reel-rail button')].map(b => b.getBoundingClientRect()).filter(r => r.width > 2);
+          return { video: shown(item.querySelector('.reel-video')), poster: shown(item.querySelector('.reel-poster')), reel: { top: reel.top, bottom: reel.bottom },
+            copy: item.querySelector('.reel-copy').firstElementChild.getBoundingClientRect().top, rail: Math.min(...rail.map(r => r.top)), count: document.querySelector('.reel-count').getBoundingClientRect().bottom, w: innerWidth, h: innerHeight };
+        }, shownBox.toString());
+        await page.waitForFunction(() => [...document.querySelectorAll('.reel-item.is-active img')].every(el => el.complete && el.naturalWidth > 0));
+        await page.screenshot({ path: fileURLToPath(new URL(`reels-framing/${process.env.REEL_SHOTS || 'after'}-${viewport.width}x${viewport.height}-${shape === 'phone' ? '9x16' : '16x9'}.png`, shots)), animations: 'disabled' });
+        try {
+          for (const name of ['video', 'poster']) {
+            const b = seen[name];
+            assert.ok(b, `${at}: the ${name} has a measurable picture`);
+            assert.equal(b.fit, 'contain', `${at}: the ${name} is shown whole (contain), not ${b.fit}`);
+            assert.ok(b.left >= -0.5 && b.right <= seen.w + 0.5 && b.top >= seen.reel.top - 0.5 && b.bottom <= seen.h + 0.5, `${at}: the ${name} lies inside the screen (${JSON.stringify(b)})`);
+          }
+          if (phone && shape === 'desktop') {
+            const above = Math.min(seen.copy, seen.rail);
+            assert.ok(seen.video.bottom <= above + 0.5, `${at}: the 16:9 film ends (${seen.video.bottom.toFixed(1)}) above the copy and rail (${above.toFixed(1)})`);
+            assert.ok(Math.abs(seen.video.left) < 0.5 && Math.abs(seen.video.right - seen.w) < 0.5, `${at}: the 16:9 film spans the width`);
+            const middle = (seen.video.top + seen.video.bottom) / 2, space = [seen.count, above];
+            assert.ok(seen.video.top >= seen.count - 0.5 && Math.abs(middle - (space[0] + space[1]) / 2) < 4, `${at}: the 16:9 film is centred between the counter and the copy (middle ${middle.toFixed(1)}, space ${space.map(n => n.toFixed(1)).join('-')})`);
+          }
+        } catch (error) { problems.push(error.message); } // every screen and shape is checked (and shot) before failing
+      }
+      await context.close();
+    }
+    assert.deepEqual(problems, []);
+  });
+
+  await record('Reels shade: lighter and shorter, yet white copy stays readable over a bright frame', async () => {
+    const sharp = (await import('sharp')).default;
+    for (const viewport of [PHONE, TALL]) {
+      const { context, page } = await session({ viewport, phone: true });
+      await loaded(page);
+      await openReels(page, true);
+      await reelLive(page);
+      // A white frame under the shade, everything else out of the way; --pale as a bright film sets it.
+      const marks = await page.locator('.reel-item.is-active').evaluate(item => {
+        const video = item.querySelector('.reel-video'); video.pause();
+        const stage = item.querySelector('.reel-stage');
+        for (const el of stage.querySelectorAll('img, video')) el.style.visibility = 'hidden';
+        stage.style.background = '#fff';
+        const copy = item.querySelector('.reel-copy'), kicker = copy.firstElementChild.getBoundingClientRect(), blurb = copy.lastElementChild.getBoundingClientRect();
+        document.querySelectorAll('.reel-copy, .reel-rail, .reel-top, #tabbar, .reel-progress').forEach(el => { el.style.visibility = 'hidden'; });
+        return { kicker: Math.round(kicker.top + 2), blurb: Math.round(blurb.bottom - 2) };
+      });
+      const sample = async pale => {
+        await page.locator('.reel-item.is-active .reel-stage').evaluate((stage, value) => stage.style.setProperty('--pale', value), String(pale));
+        await page.waitForTimeout(1000);
+        const { data, info } = await sharp(await page.screenshot({ animations: 'disabled' })).raw().toBuffer({ resolveWithObject: true });
+        const at = y => { const i = (y * info.width + 20) * info.channels; return data[i]; }; // grey, so red = value
+        return { kicker: at(marks.kicker), blurb: at(marks.blurb), middle: at(Math.round(viewport.height * 0.5)) };
+      };
+      const lum = v => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+      const contrast = v => 1.05 / (lum(v) + 0.05);
+      const dark = await sample(0), bright = await sample(1);
+      // The old shade left about 45 of 255 at the blurb and dimmed the middle of the screen; the new one is ~35 % lighter.
+      assert.ok(dark.blurb >= 85, `${viewport.height}: the shade at the copy's foot is lighter than before (${dark.blurb} of 255)`);
+      assert.ok(dark.middle >= 250, `${viewport.height}: the shade is shorter: the middle of the screen is untouched (${dark.middle})`);
+      for (const [where, value] of Object.entries({ kicker: bright.kicker, blurb: bright.blurb })) assert.ok(contrast(value) >= 4.5, `${viewport.height}: over a bright frame white copy at the ${where} keeps 4.5:1 (${contrast(value).toFixed(2)}:1, ${value})`);
+      await context.close();
+    }
   });
 
   await record('Reels play the screen’s version first: phone cuts first on a phone, desktop cuts first on a desktop', async () => {
@@ -978,13 +1069,13 @@ try {
       await reelLive(page);
       const shown = () => page.locator('.reel-item.is-active').evaluate(item => { const video = item.querySelector('.reel-video'); return { film: item.dataset.film, shape: item.dataset.shape, w: video?.videoWidth, h: video?.videoHeight, fit: video && getComputedStyle(video).objectFit }; });
       const how = iphone ? 'downloaded whole' : 'streamed';
-      assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'cover' }, `${how}: the phone cut plays, filling the screen`);
+      assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'contain' }, `${how}: the phone cut plays, shown whole`);
       assert.ok(fetched.length && fetched.every(path => path.endsWith('-phone.mp4')), `${how}: only phone cuts were fetched (${fetched.join(', ')})`);
       if (!iphone) {
         // The short-lived link breaks mid-film: one fresh link, and the same cut carries on where it was.
         await page.locator('.reel-video').evaluate(video => { video.pause(); video.currentTime = 2; video.dispatchEvent(new Event('error')); });
         await page.waitForFunction(() => { const v = document.querySelector('.reel-item.is-active .reel-video'); return v && !v.paused && v.currentTime >= 2 && v.videoWidth; });
-        assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'cover' }, 'after a broken link the phone cut carries on');
+        assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'contain' }, 'after a broken link the phone cut carries on');
       }
       // The next round: every item of the new round keeps the phone cut.
       await page.locator('.reel-track').evaluate(track => { const items = track.querySelectorAll('.reel-item'); track.scrollTop = items[items.length - 3].offsetTop; });
@@ -1197,11 +1288,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v14'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'invite.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v14'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v14'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v15'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'invite.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v15'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v15'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
-    assert.equal(await page.locator('#shell-version').innerText(), 'v14 · saved for offline', 'Settings → About names the shell this browser holds');
+    assert.equal(await page.locator('#shell-version').innerText(), 'v15 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 
