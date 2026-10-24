@@ -99,6 +99,7 @@ body:has(dialog[open]){overflow:hidden}
 .variant-choices{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 12px}.variant-choices .filter-chip{white-space:normal;text-align:start}
 .detail-body .version-choices{border-top:1px solid var(--rule);padding-top:16px;margin-top:16px;flex-wrap:wrap;gap:10px}
 .detail-body .version{flex:0 1 auto;min-width:120px}.detail-body .version span{padding:12px;font-size:14px}
+.lang-switch{display:inline-flex;align-items:center;gap:2px;min-height:44px;margin-top:8px;padding:0;border:0;background:none;color:#fff;font-size:14px;font-weight:600;text-underline-offset:4px}.lang-switch:hover{text-decoration:underline}.lang-switch svg{width:18px;height:18px}.lang-switch[dir=rtl] svg{transform:scaleX(-1)}
 .detail-body .date-added{font-size:13px;margin:20px 0 4px;color:var(--muted)}.release-link{display:inline-flex;align-items:center;gap:2px;min-height:44px;font-size:14px;font-weight:600;color:#fff;text-decoration:none;text-underline-offset:4px}.release-link:hover{text-decoration:underline}.release-link svg{width:18px;height:18px}
 .detail-body .shelf{margin-top:28px;margin-bottom:0}.detail-body .shelf-heading{padding:0}.detail-body .card-track{padding-left:0;padding-right:0;scroll-padding:0}.detail-body .card{flex-basis:76%}
 .library footer{padding:16px 24px;font-size:12px;text-align:left;color:var(--muted)}

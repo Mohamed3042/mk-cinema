@@ -35,7 +35,13 @@ function newest(a, b) {
     || Number(b.versions.some(version => version.kind === 'desktop')) - Number(a.versions.some(version => version.kind === 'desktop'));
 }
 
-export function groupFilms(films) {
+// The language this device reads: Arabic when its first language is Arabic, else English.
+export const deviceLang = (nav = globalThis.navigator) => String(nav?.languages?.[0] || nav?.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en';
+
+// One title per group. With `lang`, the newest variant in that language stands for the group (the card, rows, search,
+// Reels, the billboard), and filters and search look only at that language's films; a group without it shows its
+// newest variant. A film without `lang` counts as English.
+export function groupFilms(films, { lang = null } = {}) {
   const groups = new Map();
   for (const source of films) {
     const film = normalize(source);
@@ -45,7 +51,8 @@ export function groupFilms(films) {
   }
   return [...groups.values()].map(variants => {
     variants.sort(newest);
-    return { ...variants[0], variants };
+    const shown = variants.find(film => film.lang === lang) || variants[0];
+    return lang ? { ...shown, variants, shownLang: shown.lang } : { ...shown, variants };
   }).sort(newest);
 }
 
@@ -64,7 +71,8 @@ export function filterFilms(groups, filter = 'All', query = '') {
   return groups.flatMap(group => {
     const matches = film => matchesFilter(film, filter) && words.every(word =>
       [film.title, film.product, film.kind, film.lang, film.variant, film.blurb].filter(Boolean).join(' ').toLocaleLowerCase().includes(word));
-    const film = matches(group) ? group : group.variants.find(matches);
+    // A title shown in one language is found through that language's films only: the other is not a card of its own.
+    const film = matches(group) ? group : group.variants.find(item => (!group.shownLang || item.lang === group.shownLang) && matches(item));
     return film ? [{ ...film, variants: group.variants }] : [];
   });
 }
@@ -123,9 +131,19 @@ export function listGroups(groups, list) {
   });
 }
 
+// Only long films resume: a short one always starts from the beginning, and never sits in Continue watching.
+export const RESUME_MIN_SECONDS = 30 * 60;
+const longEnough = (seconds, entry) => (Number.isFinite(seconds) && seconds > 0 ? seconds : entry?.duration) >= RESUME_MIN_SECONDS;
+// Where the player starts a film: its saved place when the film is 30 min or longer and not almost done, else 0.
+// `seconds` is the catalog length; when it is unknown the saved duration decides.
+export function resumeFrom(entry, seconds) {
+  if (!validProgress(entry) || !longEnough(seconds, entry)) return 0;
+  return entry.time / entry.duration < 0.95 ? entry.time : 0;
+}
+
 export function continueFilms(groups, progress) {
   return groups.flatMap(group => {
-    const watched = group.variants.filter(film => Object.hasOwn(progress, film.id) && validProgress(progress[film.id]))
+    const watched = group.variants.filter(film => Object.hasOwn(progress, film.id) && validProgress(progress[film.id]) && longEnough(film.seconds, progress[film.id]))
       .sort((a, b) => progress[b.id].updated - progress[a.id].updated);
     const film = watched[0];
     if (!film || progress[film.id].time <= 0 || progress[film.id].time / progress[film.id].duration >= 0.95) return [];

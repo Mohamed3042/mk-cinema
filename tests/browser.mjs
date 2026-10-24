@@ -274,6 +274,8 @@ try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await context.newPage();
     captureErrors(page, 'continue watching');
+    // Only films of 30 min or more resume: the demo clip is 12 s, so its catalog length says 40 min here.
+    await page.route('**/demo/cinema.json', route => route.fulfill({ json: { ...catalog, films: catalog.films.map(f => f.id === 'golden-hour' ? { ...f, seconds: 2400 } : f) } }));
     await loaded(page);
     await openFeature(page);
     await page.locator('#film-detail [data-action=play]').click();
@@ -307,6 +309,16 @@ try {
     await page.reload();
     await page.locator('main.library').waitFor();
     assert.equal(await page.locator('.shelf[aria-label="Continue watching"]').count(), 0, 'Completed film leaves Continue watching');
+    // A short film (12 s, the real demo length) keeps its saved place but never resumes or joins Continue watching.
+    await page.evaluate(() => localStorage.setItem('mkc.demo.progress', JSON.stringify({ 'light-journey': { time: 6, duration: 12, updated: Date.now() } })));
+    await page.reload();
+    await page.locator('main.library').waitFor();
+    assert.equal(await page.locator('.shelf[aria-label="Continue watching"]').count(), 0, 'A short film is not in Continue watching');
+    assert.equal(await page.locator('progress.watch-progress').count(), 0, 'and shows no progress bar');
+    await page.locator('.film-card[data-film="light-journey"]').first().click();
+    await page.locator('#film-detail [data-action=play]').click();
+    await page.waitForFunction(() => { const video = document.querySelector('video'); if (!video || video.readyState < 2) return false; video.pause(); return true; });
+    assert.ok(await page.locator('video').evaluate(el => el.currentTime < 1), 'A short film starts from the beginning');
     await context.close();
   });
 

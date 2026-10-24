@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupFilms, filterFilms, readProgress, saveProgress, continueFilms, splitTitle, kindLabel } from '../catalog.js';
+import { groupFilms, filterFilms, readProgress, saveProgress, continueFilms, resumeFrom, deviceLang, RESUME_MIN_SECONDS, splitTitle, kindLabel } from '../catalog.js';
 
 const film = (id, fields = {}) => ({ id, title: id, added: '2026-10-22', versions: [{ kind: 'phone' }], seconds: 100, ...fields });
 const storage = () => ({ data: new Map(), getItem(key) { return this.data.get(key) ?? null; }, setItem(key, value) { this.data.set(key, value); } });
@@ -74,7 +74,8 @@ test('progress handles broken or blocked storage and invalid times', () => {
 });
 
 test('continue watching uses latest watched variant and hides completed, empty, or invalid progress', () => {
-  const groups = groupFilms([film('main', { group: 'g' }), film('cut', { group: 'g' }), film('other'), film('done'), film('zero')]);
+  const long = { seconds: 3600 };
+  const groups = groupFilms([film('main', { group: 'g', ...long }), film('cut', { group: 'g', ...long }), film('other', long), film('done', long), film('zero', long)]);
   const progress = { main: { time: 20, duration: 100, updated: 1 }, cut: { time: 30, duration: 100, updated: 3 }, other: { time: 20, duration: 100, updated: 2 }, done: { time: 95, duration: 100, updated: 4 }, zero: { time: 0, duration: 100, updated: 5 } };
   assert.deepEqual(continueFilms(groups, progress).map(item => item.resumeFilmId), ['cut', 'other']);
   progress.cut.time = 100;
@@ -110,4 +111,47 @@ test('kind labels read as words, unknown kinds fall back to Film', () => {
   assert.deepEqual(['film', 'reel', 'ad', 'loop', 'teaser', 'demo'].map(kindLabel), ['Film', 'Reel', 'Ad', 'Loop', 'Teaser', 'Demo']);
   assert.equal(kindLabel('trailer'), 'Film');
   assert.equal(kindLabel(undefined), 'Film');
+});
+
+test('resume: only films of 30 min or more start where they were left', () => {
+  assert.equal(RESUME_MIN_SECONDS, 1800);
+  const at = (time, duration = 2400) => ({ time, duration, updated: 1 });
+  assert.equal(resumeFrom(at(600), 29 * 60 + 59), 0, '29:59 starts at 0');
+  assert.equal(resumeFrom(at(600), 30 * 60), 600, '30:00 resumes');
+  assert.equal(resumeFrom(at(6, 12), 12), 0, 'a 12 s demo film starts at 0');
+  assert.equal(resumeFrom(at(600, 100 * 60), undefined), 600, 'no catalog length: the saved duration decides (long)');
+  assert.equal(resumeFrom(at(6, 12), 0), 0, 'no catalog length and a short saved duration: 0');
+  assert.equal(resumeFrom({ time: 6, updated: 1 }, undefined), 0, 'unknown duration: 0');
+  assert.equal(resumeFrom(undefined, 3600), 0, 'nothing saved: 0');
+  assert.equal(resumeFrom(at(2350), 2400), 0, 'almost done: from the start');
+});
+
+test('continue watching lists only films of 30 min or more', () => {
+  const groups = groupFilms([film('short', { seconds: 12 }), film('edge', { seconds: 1799 }), film('long', { seconds: 1800 }), film('unknown', { seconds: 0 })]);
+  const progress = { short: { time: 6, duration: 12, updated: 1 }, edge: { time: 60, duration: 1799, updated: 2 }, long: { time: 60, duration: 1800, updated: 3 }, unknown: { time: 60, duration: 3600, updated: 4 } };
+  assert.deepEqual(continueFilms(groups, progress).map(item => item.resumeFilmId), ['unknown', 'long']);
+});
+
+test('language: the device language picks which film of a language pair stands for the title', () => {
+  assert.equal(deviceLang({ languages: ['ar-KW', 'en'] }), 'ar');
+  assert.equal(deviceLang({ language: 'AR' }), 'ar');
+  assert.equal(deviceLang({ languages: ['en-US', 'ar'] }), 'en', 'the first language decides');
+  assert.equal(deviceLang({ languages: [], language: 'ar-EG' }), 'ar');
+  assert.equal(deviceLang({}), 'en');
+  assert.equal(deviceLang(undefined), 'en');
+  const pair = [film('en-cut', { group: 'p', lang: 'en', added: '2026-10-22' }), film('ar-cut', { group: 'p', lang: 'ar', added: '2026-10-20' })];
+  assert.equal(groupFilms(pair, { lang: 'ar' })[0].id, 'ar-cut', 'Arabic device + pair: the Arabic film, though older');
+  assert.equal(groupFilms(pair, { lang: 'en' })[0].id, 'en-cut', 'English device + pair: the English film');
+  assert.equal(groupFilms(pair, { lang: 'ar' })[0].variants.length, 2, 'the other language stays in the group');
+  const englishOnly = [film('one', { group: 'e', lang: 'en' }), film('two', { group: 'e', lang: 'en', added: '2026-10-20' })];
+  assert.equal(groupFilms(englishOnly, { lang: 'ar' })[0].id, 'one', 'Arabic device, no Arabic: the newest English film');
+  const unmarked = [film('plain', { group: 'u', added: '2026-10-19' }), film('arabic', { group: 'u', lang: 'ar' })];
+  assert.equal(groupFilms(unmarked, { lang: 'en' })[0].id, 'plain', 'a film without lang counts as English');
+  assert.equal(groupFilms(unmarked, { lang: 'ar' })[0].id, 'arabic');
+  const groups = groupFilms([...pair, film('solo')], { lang: 'ar' });
+  assert.equal(groups.length, 2, 'a pair is one title');
+  assert.equal(filterFilms(groups, 'All', 'cut')[0].id, 'ar-cut', 'search shows the device language when both match');
+  assert.deepEqual(filterFilms(groupFilms(pair, { lang: 'en' }), 'Arabic'), [], 'English device: the pair’s Arabic film is no card of its own, not even under Arabic');
+  assert.equal(filterFilms(groupFilms(pair, { lang: 'ar' }), 'Arabic')[0].id, 'ar-cut', 'Arabic device: the Arabic chip finds it');
+  assert.equal(filterFilms(groupFilms([film('only-ar', { lang: 'ar' })], { lang: 'en' }), 'Arabic')[0].id, 'only-ar', 'an Arabic film with no English twin still shows on an English device');
 });

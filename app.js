@@ -1,5 +1,5 @@
 import { CinemaError, getCatalog, getPoster, getVideoURL, downloadVideo, forgetPosters, checkKey } from './api.js';
-import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms, readList, saveList, inList, toggleList, listGroups, splitTitle, kindLabel } from './catalog.js';
+import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms, resumeFrom, deviceLang, readList, saveList, inList, toggleList, listGroups, splitTitle, kindLabel } from './catalog.js';
 import { MAX_WHOLE_BYTES, claimPreview, reduced, onReducedChange } from './motion.js';
 import { startPreview } from './previews.js';
 import { mountBillboard } from './billboard.js';
@@ -95,13 +95,15 @@ function header(back = false) {
 }
 function groupsOf() {
   if (groupCache?.source !== catalog) {
-    const groups = groupFilms(catalog.films);
+    const groups = groupFilms(catalog.films, { lang: deviceLang() }); // a language pair shows the device's language
     groupCache = { source: catalog, groups, byId: new Map(groups.flatMap(group => group.variants.map(item => [item.id, item]))) };
   }
   return groupCache.groups;
 }
 const findFilm = id => { groupsOf(); return groupCache.byId.get(id); };
 const titleIds = id => groupsOf().find(group => group.variants.some(item => item.id === id))?.variants.map(item => item.id) || [id];
+// A title's cuts in the language it is shown in (a language pair counts as one title, not as two cuts).
+const sameLang = f => f.variants.filter(v => v.lang === f.lang);
 const announce = text => { document.querySelector('#announce').textContent = text; };
 
 // Previews reuse the film stream the player gets from api.js. Short-lived links are cached for four minutes.
@@ -430,7 +432,7 @@ function settingsView({ solo = false } = {}) {
   const group = (id, label, rows) => `<section class="set-group" aria-labelledby="set-${id}"><h2 class="set-label" id="set-${id}">${label}</h2><div class="set-card">${rows}</div></section>`;
   const tokenState = demo ? 'Demo, no token used' : token ? 'Saved in this browser' : 'Not connected';
   return `<section class="settings-page" aria-labelledby="settings-title"><div class="settings-head">${solo ? `<button class="icon-button" data-action="settings-back" aria-label="Back">${icon('back')}</button>` : ''}<h1 id="settings-title">Settings</h1></div>
-${group('playback', 'Playback', `${switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.')}${choiceRow('player-fit', 'Picture in the player', [['fit', 'Fit'], ['fill', 'Fill']], prefs.playerFit, 'Fit shows the whole film. Fill covers the screen and can trim its edges. A pinch in the player switches too.')}`)}
+${group('playback', 'Playback', `${switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.')}${choiceRow('player-fit', 'Picture in the player', [['fit', 'Fit'], ['fill', 'Fill']], prefs.playerFit, 'Fit shows the whole film. Fill covers the screen and can trim its edges. A pinch in the player switches too.')}<div class="set-row"><span class="set-name">Language</span><span class="set-value">${deviceLang() === 'ar' ? 'Arabic' : 'English'} (from your ${desktopQuery.matches ? 'browser' : 'phone'})</span></div>`)}
 ${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder, 'Titles with your screen’s version come first.')}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
 ${catalog ? group('list', 'My List', `<button class="set-row set-link" data-action="open-list"><span class="set-name">Open My List</span><span class="set-value">${plural(saved)}</span>${icon('arrow')}</button>`) : ''}
 ${isGuest() ? group('sharing', 'Sharing', `<div class="set-row"><span class="set-name">Shared by</span><span class="set-value">${OWNER}</span></div><div class="set-row"><span class="set-name">Invite for</span><span class="set-value" dir="auto">${escape(guest.name)}</span></div><button class="set-row set-link set-danger" data-action="leave" aria-describedby="leave-note"><span class="set-name">Leave</span></button><p class="set-foot" id="leave-note">Forgets this invite on this device. ${OWNER}'s cinema stays as it is.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`) : `${!demo && token ? group('invites', 'Invites', invitesRows()) : ''}
@@ -632,7 +634,7 @@ function listView(all, progress) {
 }
 function card(f, progress = {}) {
   const id = f.resumeFilmId || f.id, saved = progress[id], { kicker: brand, name } = splitTitle(f.title);
-  return `<article class="card"><button class="film-card" data-film="${escape(id)}" aria-label="More info: ${escape(f.title)}">${poster(f)}<span class="card-title film-title" dir="auto">${brand ? `<small class="card-kicker">${escape(brand)}</small>` : ''}${escape(name)}</span>${f.variants.length > 1 ? `<span class="cut-count">${f.variants.length} cuts</span>` : ''}</button>${f.resumeFilmId && saved ? `<progress class="watch-progress" value="${saved.time}" max="${saved.duration}" aria-label="Watch progress for ${escape(f.title)}"></progress>` : ''}</article>`;
+  return `<article class="card"><button class="film-card" data-film="${escape(id)}" aria-label="More info: ${escape(f.title)}">${poster(f)}<span class="card-title film-title" dir="auto">${brand ? `<small class="card-kicker">${escape(brand)}</small>` : ''}${escape(name)}</span>${sameLang(f).length > 1 ? `<span class="cut-count">${sameLang(f).length} cuts</span>` : ''}</button>${f.resumeFilmId && saved ? `<progress class="watch-progress" value="${saved.time}" max="${saved.duration}" aria-label="Watch progress for ${escape(f.title)}"></progress>` : ''}</article>`;
 }
 function shelf(name, films, progress = {}) {
   return films.length ? `<section class="shelf" aria-label="${escape(name)}" data-row="${escape(name)}"><div class="shelf-heading"><h2>${escape(name)}</h2><span class="shelf-count">${films.length} ${films.length === 1 ? 'title' : 'titles'}</span><button class="explore" data-action="explore" data-row="${escape(name)}" aria-label="Explore all: ${escape(name)}"><span>Explore all</span>${icon('arrow')}</button><span class="row-dashes" aria-hidden="true"></span></div><div class="row-viewport"><div class="card-track">${films.map(f => card(f, progress)).join('')}</div><button class="paddle paddle-prev" aria-label="Previous titles: ${escape(name)}" disabled>${icon('back')}</button><button class="paddle paddle-next" aria-label="Next titles: ${escape(name)}">${icon('arrow')}</button></div></section>` : '';
@@ -656,8 +658,11 @@ function filmPage(origin) {
   const related = all.filter(g => g.id !== group.id && g.product === selected.product);
   let release = '';
   try { const url = new URL(film.release); if (url.protocol === 'https:') release = `<a class="release-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">View release ${icon('arrow')}</a>`; } catch { /* Old catalogs can omit a release link. */ }
-  const cuts = group.variants.length > 1 ? `<section class="episodes" aria-label="Cuts"><h2>Cuts</h2><div class="episode-list" role="group" aria-label="Film cut"><ol>${group.variants.map((v, index) => `<li><button class="episode variant ${v.id === film.id ? 'selected' : ''}" data-variant="${escape(v.id)}" aria-pressed="${v.id === film.id}"><span class="ep-n">${index + 1}</span>${poster(v, 'ep-poster')}<span class="ep-copy"><strong dir="auto">${escape(v.variant || v.title)}</strong><small>${duration(v.seconds)} · ${escape(v.added || 'Date unavailable')}</small></span>${v.id === film.id ? `<span class="ep-check">${icon('check')}</span>` : ''}</button></li>`).join('')}</ol></div></section>` : '';
-  const html = `<button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><span class="sheet-handle" aria-hidden="true"></span><div class="detail-art">${poster(film, 'detail-poster')}<video class="detail-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="detail-shade"></div><div class="detail-hero"><p class="kicker" dir="auto">${escape(kicker(selected))}</p><h1 id="detail-title" class="film-title" dir="auto">${escape(splitTitle(film.title).name)}</h1><div class="detail-buttons"><button class="primary detail-play" data-action="play">${icon('play')}Play</button>${listButton(film, 'detail-list')}<button class="icon-button round detail-mute" data-action="detail-mute" aria-label="Unmute" hidden>${icon('mute')}</button></div></div></div><div class="detail-body"><p class="detail-meta">${metaLine(selected, { product: true })}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="secondary" data-action="save">${icon('download')}${desktopQuery.matches ? 'Download' : 'Save to phone'}</button></div>${cuts}${versionList()}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${related.length ? `<section class="shelf more-like" aria-label="More like this"><div class="shelf-heading"><h2>More like this</h2></div><div class="more-grid">${related.map(f => card(f)).join('')}</div></section>` : ''}</div>`;
+  // Cuts in this language; the other language is one small link, never a card of its own.
+  const mine = sameLang({ ...selected, variants: group.variants }), other = group.variants.find(v => v.lang !== selected.lang);
+  const langSwitch = other ? `<button class="lang-switch" data-variant="${escape(other.id)}"${other.lang === 'ar' ? ' lang="ar" dir="rtl">النسخة العربية' : ' lang="en" dir="ltr">English version'}${icon('arrow')}</button>` : '';
+  const cuts = mine.length > 1 ? `<section class="episodes" aria-label="Cuts"><h2>Cuts</h2><div class="episode-list" role="group" aria-label="Film cut"><ol>${mine.map((v, index) => `<li><button class="episode variant ${v.id === film.id ? 'selected' : ''}" data-variant="${escape(v.id)}" aria-pressed="${v.id === film.id}"><span class="ep-n">${index + 1}</span>${poster(v, 'ep-poster')}<span class="ep-copy"><strong dir="auto">${escape(v.variant || v.title)}</strong><small>${duration(v.seconds)} · ${escape(v.added || 'Date unavailable')}</small></span>${v.id === film.id ? `<span class="ep-check">${icon('check')}</span>` : ''}</button></li>`).join('')}</ol></div></section>` : '';
+  const html = `<button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><span class="sheet-handle" aria-hidden="true"></span><div class="detail-art">${poster(film, 'detail-poster')}<video class="detail-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="detail-shade"></div><div class="detail-hero"><p class="kicker" dir="auto">${escape(kicker(selected))}</p><h1 id="detail-title" class="film-title" dir="auto">${escape(splitTitle(film.title).name)}</h1><div class="detail-buttons"><button class="primary detail-play" data-action="play">${icon('play')}Play</button>${listButton(film, 'detail-list')}<button class="icon-button round detail-mute" data-action="detail-mute" aria-label="Unmute" hidden>${icon('mute')}</button></div></div></div><div class="detail-body"><p class="detail-meta">${metaLine(selected, { product: true })}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="secondary" data-action="save">${icon('download')}${desktopQuery.matches ? 'Download' : 'Save to phone'}</button></div>${langSwitch}${cuts}${versionList()}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${related.length ? `<section class="shelf more-like" aria-label="More like this"><div class="shelf-heading"><h2>More like this</h2></div><div class="more-grid">${related.map(f => card(f)).join('')}</div></section>` : ''}</div>`;
   let detail = main.querySelector('#film-detail'), settled = Promise.resolve();
   if (detail) { live.modal?.stop(); detail.innerHTML = html; detail.scrollTop = 0; }
   else {
@@ -806,8 +811,8 @@ async function play(resumeAt) {
     try { await source(lastTime); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
     finally { refreshing=false; }
   });
-  const progress = readProgress(storage, progressKey)[film.id];
-  const from = resumeAt ?? (progress && progress.time / progress.duration < 0.95 ? progress.time : 0);
+  // Only a film of 30 min or more picks up where it was left (resumeFrom); a cut switch carries its time over.
+  const from = resumeAt ?? resumeFrom(readProgress(storage, progressKey)[film.id], film.seconds);
   try { await source(from); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
 }
 function saveScreen(state, preview = false) {

@@ -618,6 +618,8 @@ try {
   await record('skeleton shimmer while posters load, and a wipe-in progress bar on Continue watching', async () => {
     const { context, page } = await session({ extra: { reducedMotion: 'no-preference' } });
     await context.addInitScript(() => localStorage.setItem('mkc.demo.progress', JSON.stringify({ 'golden-hour': { time: 4, duration: 12, updated: Date.now() } })));
+    // Continue watching holds films of 30 min or more: the 12 s demo clip gets a 40 min catalog length here.
+    await page.route('**/demo/cinema.json', route => route.fulfill({ json: { ...catalog, films: catalog.films.map(f => f.id === 'golden-hour' ? { ...f, seconds: 2400 } : f) } }));
     await page.route('**/demo/posters/*', async route => { await new Promise(resolve => setTimeout(resolve, 900)); await route.continue(); });
     await page.goto(`${origin}/?demo`);
     await page.locator('main.library .film-card').first().waitFor();
@@ -990,6 +992,43 @@ try {
       const shapes = await page.locator('.reel-item[data-film=sheep-test]').evaluateAll(items => items.map(item => item.dataset.shape));
       assert.deepEqual(shapes, ['phone', 'phone'], 'the next round plays the phone cut too');
       assert.ok(fetched.every(path => path.endsWith('-phone.mp4')), `${how}: still only phone cuts (${fetched.join(', ')})`);
+      await context.close();
+    }
+  });
+
+  await record('Language: an Arabic phone sees the Arabic film of a pair everywhere, an English one the English film; the other is one link in More info', async () => {
+    // Demo data: the Arabic Light Journey (رحلة الضوء) gets an English twin in the same group (an older film, so
+    // newest-first alone would never show it).
+    const lj = catalog.films.find(f => f.id === 'light-journey');
+    const twin = { ...lj, id: 'light-journey-en', title: 'Light Journey', lang: 'en', dir: 'ltr', variant: 'English', group: 'lj-pair', added: '2026-10-14' };
+    const mock = { ...catalog, films: [...catalog.films.map(f => f.id === 'light-journey' ? { ...f, group: 'lj-pair', variant: 'Arabic' } : f), twin] };
+    assert.equal(lj.lang, 'ar');
+    for (const [locale, shown, hidden, link, name] of [['ar-KW', 'light-journey', 'light-journey-en', 'English version', 'Arabic'], ['en-US', 'light-journey-en', 'light-journey', 'النسخة العربية', 'English']]) {
+      const { context, page } = await session({ viewport: PHONE, phone: true, extra: { locale } });
+      await page.route('**/demo/cinema.json', route => route.fulfill({ json: mock }));
+      await loaded(page);
+      assert.equal(await page.evaluate(() => navigator.languages[0]), locale);
+      assert.ok(await page.locator(`.film-card[data-film="${shown}"]`).count() > 0, `${locale}: the ${name} film has cards`);
+      assert.equal(await page.locator(`.film-card[data-film="${hidden}"]`).count(), 0, `${locale}: the other language never has a card of its own`);
+      assert.equal(await page.locator(`.film-card[data-film="${shown}"] .cut-count`).count(), 0, `${locale}: a language pair is not "2 cuts"`);
+      await page.locator('#tabbar [data-tab=new]').tap();
+      await page.locator('main[data-tab=new]').waitFor();
+      assert.deepEqual([await page.locator(`.hot-item[data-film="${shown}"]`).count(), await page.locator(`.hot-item[data-film="${hidden}"]`).count()], [1, 0], `${locale}: New & Hot shows the ${name} film`);
+      await openReels(page, true);
+      const reel = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
+      assert.ok(reel.includes(shown) && !reel.includes(hidden), `${locale}: Reels play the ${name} film (${reel.join(', ')})`);
+      await page.locator('#tabbar [data-tab=settings]').tap();
+      await page.locator('main.settings').waitFor();
+      assert.ok((await page.locator('.set-value').allInnerTexts()).includes(`${name} (from your phone)`), `${locale}: Settings says which language it follows`);
+      await page.locator('#tabbar [data-tab=home]').tap();
+      await page.locator('main.library[data-tab=home]').waitFor();
+      await page.locator(`.film-card[data-film="${shown}"]`).first().click();
+      await page.locator('#film-detail[open]').waitFor();
+      assert.equal(await page.locator('#film-detail .lang-switch').innerText(), link, `${locale}: More info offers the other language as one link`);
+      assert.equal(await page.locator('#film-detail .episodes[aria-label=Cuts]').count(), 0, `${locale}: no cut list for a pair`);
+      await page.locator('#film-detail .lang-switch').click();
+      await page.waitForFunction(id => document.querySelector('#film-detail .lang-switch')?.dataset.variant === id, shown);
+      assert.equal(await page.locator('#film-detail #detail-title').innerText(), mock.films.find(f => f.id === hidden).title, `${locale}: the link opens the other language`);
       await context.close();
     }
   });
