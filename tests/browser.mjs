@@ -511,6 +511,262 @@ try {
     await page.locator('main.offline').waitFor();
     await context.close();
   });
+
+  // Invites. Every key here is made up in the fine-grained shape; GitHub is mocked, nothing leaves this computer.
+  const FAKE = {
+    guest: 'github_pat_11FAKEGUEST000000000_testonlynotarealkeyGuest0001',
+    owner: 'github_pat_11FAKEOWNER000000000_testonlynotarealkeyOwner0002',
+    mom: 'github_pat_11FAKEINVITE00000000_testonlynotarealkeyMomKey4321',
+    dad: 'github_pat_11FAKEINVITE00000000_testonlynotarealkeyDadKey8765',
+    write: 'github_pat_11FAKEWRITE000000000_testonlynotarealkeyWrite0003',
+    norepo: 'github_pat_11FAKENOREPO00000000_testonlynotarealkeyNoRepo004',
+  };
+  const keys = Object.values(FAKE);
+  const inviteHash = (n, t) => `#invite=${Buffer.from(JSON.stringify({ v: 1, n, t })).toString('base64url')}`;
+  const inviteShots = new URL('invites/', shots);
+  await mkdir(inviteShots, { recursive: true });
+  const inviteShot = async (page, name) => {
+    await page.waitForFunction(() => [...document.querySelectorAll('img[data-poster]')].every(el => el.complete && el.naturalWidth > 0));
+    await page.screenshot({ path: fileURLToPath(new URL(`${name}.png`, inviteShots)), animations: 'disabled' });
+  };
+  // What the server saw (the real request lines), what the page asked for, and everything it printed.
+  const wire = [];
+  server.on('request', request => wire.push(request.url));
+  const leaks = { requests: [], console: [] };
+  function watch(page, label) {
+    // GitHub refusals the test asks for print a resource error; anything else still fails the suite.
+    page.setDefaultTimeout(10000);
+    page.on('pageerror', error => errors.push(`${label}: ${error.message}`));
+    page.on('console', message => { if (message.type() === 'error' && !/^Failed to load resource: the server responded with a status of (401|404)/.test(message.text())) errors.push(`${label}: ${message.text()}`); });
+    page.on('request', request => leaks.requests.push(request.url()));
+    page.on('console', message => leaks.console.push(message.text()));
+  }
+  // GitHub, mocked: each key gets the answer its name says. The expiry and scope headers are exposed like GitHub does.
+  async function mockGitHub(context, { ended = 0 } = {}) {
+    const seen = [];
+    await context.route('https://github.com/**', route => route.fulfill({ body: '<!doctype html><title>GitHub (mock)</title>', contentType: 'text/html' }));
+    await context.route('https://api.github.com/**', async route => {
+      const request = route.request(), auth = request.headers().authorization || '';
+      seen.push(auth);
+      const headers = { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-oauth-scopes, github-authentication-token-expiration' };
+      if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { ...headers, 'access-control-allow-headers': 'authorization, accept, x-github-api-version' } });
+      if (ended && auth === `Bearer ${FAKE.guest}`) return route.fulfill({ status: ended, body: '{}', headers });
+      if (auth === `Bearer ${FAKE.norepo}`) return route.fulfill({ status: 404, body: '{}', headers });
+      const path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1]);
+      if (path === 'cinema.json') {
+        const extra = auth === `Bearer ${FAKE.mom}` ? { 'github-authentication-token-expiration': '2027-01-22 10:00:00 UTC' } : auth === `Bearer ${FAKE.write}` ? { 'x-oauth-scopes': 'repo' } : {};
+        return route.fulfill({ json: catalog, headers: { ...headers, ...extra } });
+      }
+      return route.fulfill({ body: await readFile(new URL(path, root)), contentType: 'image/jpeg', headers });
+    });
+    return seen;
+  }
+  const mainText = page => page.locator('main').innerText();
+
+  await record('invite: a guest opens the link, the key leaves the address, a welcome, then the cinema', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    const seen = await mockGitHub(context);
+    const page = await context.newPage();
+    watch(page, 'invite guest');
+    await page.goto(`${origin}/${inviteHash('Mom', FAKE.guest)}`);
+    await page.locator('main.welcome').waitFor();
+    assert.equal(await page.evaluate(() => location.hash), '', 'the fragment is gone from the address');
+    assert.ok(!page.url().includes('invite') && !page.url().includes(FAKE.guest), 'the address no longer holds the invite');
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.guest, 'stored where the app keeps its key');
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('mkc.guest'))), { name: 'Mom', left: false });
+    const welcome = await mainText(page);
+    assert.match(welcome, /Hi Mom/);
+    assert.match(welcome, /Mohamed shared his cinema with you/);
+    assert.doesNotMatch(welcome, /github|token/i, 'no GitHub words for a guest');
+    await page.locator('.welcome-card.is-ready').first().waitFor();
+    await inviteShot(page, 'guest-welcome');
+    await checkLayout(page);
+    await page.getByRole('button', { name: 'Start watching', exact: true }).click();
+    await page.locator('main.library').waitFor();
+    assert.ok(seen.length && seen.every(auth => auth === `Bearer ${FAKE.guest}`), 'the key travels only in the Authorization header');
+    // The address was replaced, not pushed: Back and Forward never bring the invite back.
+    await page.goBack(); await page.goForward();
+    await page.locator('main.library').waitFor();
+    assert.ok(!page.url().includes('invite'), 'history holds no invite');
+    await page.locator('#tabbar [data-tab=settings]').click();
+    await page.locator('main.settings').waitFor();
+    const settings = await mainText(page);
+    assert.match(settings, /Shared by\s+Mohamed/);
+    assert.match(settings, /Invite for\s+Mom/);
+    assert.doesNotMatch(settings, /github|token|Invite someone/i, 'no token details, no inviting from a guest');
+    await page.locator('#set-sharing').evaluate(el => scrollTo(0, el.getBoundingClientRect().top + scrollY - 140));
+    await inviteShot(page, 'guest-settings');
+    await checkLayout(page);
+    await page.getByRole('button', { name: 'Leave', exact: true }).click();
+    await page.locator('main.invite-left').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), null, 'Leave forgets the key');
+    assert.match(await mainText(page), /You left Mohamed's cinema/);
+    await page.reload();
+    await page.locator('main.invite-left').waitFor();
+    assert.equal(await page.locator('#connect-form').count(), 0, 'a guest who left never meets the connect form');
+    await inviteShot(page, 'guest-left');
+    await context.close();
+  });
+
+  for (const status of [401, 404]) await record(`invite: an ended key (${status}) shows the calm ended screen`, async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await mockGitHub(context, { ended: status });
+    const page = await context.newPage();
+    watch(page, `invite ended ${status}`);
+    await page.goto(`${origin}/${inviteHash('Dad', FAKE.guest)}`);
+    await page.locator('main.invite-ended').waitFor();
+    const text = await mainText(page);
+    assert.match(text, /This invite has ended/);
+    assert.match(text, /Ask Mohamed for a new link\./);
+    assert.doesNotMatch(text, /github|token/i, "not the owner's token-help screen");
+    assert.equal(await page.locator('#connect-form').count(), 0);
+    if (status === 401) { await inviteShot(page, 'guest-ended'); await checkLayout(page); }
+    // Later visits with the stored key end up on the same screen, and Try again tries again.
+    await page.reload();
+    await page.locator('main.invite-ended').waitFor();
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.locator('main.invite-ended').waitFor();
+    await page.getByRole('button', { name: 'Forget this invite', exact: true }).click();
+    await page.locator('main.invite-left').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), null);
+    await context.close();
+  });
+
+  await record('invite: a broken link stores nothing and says so calmly', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await mockGitHub(context);
+    const page = await context.newPage();
+    watch(page, 'invite bad');
+    for (const hash of ['#invite=bm90LWpzb24', `#invite=${Buffer.from(JSON.stringify({ v: 1, n: 'Mom', t: 'ghp_classicclassicclassicclassic1234' })).toString('base64url')}`]) {
+      await page.goto(`${origin}/${hash}`);
+      await page.locator('main.invite-bad').waitFor();
+      assert.equal(await page.evaluate(() => location.hash), '');
+      assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), null);
+      assert.match(await mainText(page), /This invite link is incomplete/);
+    }
+    await context.close();
+  });
+
+  await record('invite: the owner makes a link (pre-filled GitHub page, key checks, ticket, Share falls back to Copy, list)', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await context.addInitScript(owner => {
+      if (!localStorage.getItem('mkc.token')) localStorage.setItem('mkc.token', owner);
+      // Share fails the way a browser without a share target does; the clipboard is a stand-in the test can read.
+      Object.defineProperty(navigator, 'share', { value: async () => { throw new DOMException('No share target', 'NotAllowedError'); }, configurable: true });
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => { window.__copied = text; } }, configurable: true });
+    }, FAKE.owner);
+    await mockGitHub(context);
+    const page = await context.newPage();
+    watch(page, 'invite owner');
+    await page.goto(`${origin}/`);
+    await page.locator('main.library').waitFor();
+    await page.locator('#tabbar [data-tab=settings]').click();
+    await page.locator('main.settings').waitFor();
+    await page.getByRole('button', { name: /Invite someone/ }).click();
+    await page.locator('main.invite').waitFor();
+    assert.equal(await page.locator('#tabbar [data-nav=settings]').getAttribute('aria-current'), 'page', 'the Settings tab stays lit');
+    assert.equal(await page.locator('#invite-github').getAttribute('href'), null, 'no GitHub link before a name');
+    await inviteShot(page, 'owner-1-start');
+    await checkLayout(page);
+    await page.locator('#invite-name').fill('Mom');
+    const href = new URL(await page.locator('#invite-github').getAttribute('href'));
+    assert.equal(`${href.origin}${href.pathname}`, 'https://github.com/settings/personal-access-tokens/new');
+    assert.deepEqual(['name', 'target_name', 'expires_in', 'contents'].map(key => href.searchParams.get(key)), ['MK Cinema – Mom', 'Mohamed3042', '90', 'read']);
+    assert.match(await page.locator('#invite-github').innerText(), /Make Mom's key on GitHub/);
+    const [github] = await Promise.all([context.waitForEvent('page'), page.locator('#invite-github').click()]);
+    await github.waitForLoadState();
+    assert.ok(github.url().startsWith('https://github.com/settings/personal-access-tokens/new?'), 'opens the pre-filled page in a new tab');
+    await github.close();
+    await inviteShot(page, 'owner-2-named');
+    const tryKey = async (key, expected) => {
+      await page.locator('#invite-token').fill(key);
+      await page.getByRole('button', { name: 'Check key and make the link', exact: true }).click();
+      await page.waitForFunction(text => document.querySelector('#invite-status')?.textContent.includes(text), expected);
+      assert.equal(await page.locator('#invite-token').getAttribute('aria-invalid'), 'true');
+    };
+    await tryKey(FAKE.owner, 'This is your own key');
+    await tryKey('ghp_classicclassicclassicclassic1234', 'This is a classic key');
+    await tryKey(FAKE.norepo, "This key can't see mk-cinema-library");
+    await tryKey(FAKE.write, 'This key can change files');
+    await inviteShot(page, 'owner-3-refused');
+    assert.deepEqual(await page.evaluate(() => localStorage.getItem('mkc.invites')), null, 'a refused key is not listed');
+    await page.locator('#invite-token').fill(FAKE.mom);
+    await page.getByRole('button', { name: 'Check key and make the link', exact: true }).click();
+    await page.getByRole('heading', { name: "Mom's link is ready" }).waitFor();
+    assert.match(await mainText(page), /It works until Jan 22, 2027/, 'the expiry GitHub reported');
+    await inviteShot(page, 'owner-4-link-ready');
+    await checkLayout(page);
+    assert.ok(!(await page.content()).includes(FAKE.mom), 'the new key is not on the page');
+    await page.getByRole('button', { name: 'Share link', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#share-status')?.textContent.startsWith('Copied'));
+    const link = new URL(await page.evaluate(() => window.__copied));
+    assert.equal(`${link.origin}${link.pathname}`, `${origin}/`, 'the app address');
+    assert.equal(link.search, '', 'never a query string');
+    assert.ok(link.hash.startsWith('#invite='));
+    assert.deepEqual(JSON.parse(Buffer.from(link.hash.slice(8), 'base64url').toString()), { v: 1, n: 'Mom', t: FAKE.mom });
+    const stored = await page.evaluate(() => JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
+    assert.ok(!stored.includes(FAKE.mom), 'the new key is stored nowhere on this device');
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('mkc.invites')).map(item => [item.name, item.last4, item.expires])), [['Mom', '4321', '2027-01-22T10:00:00.000Z']]);
+    // Without a share sheet only Copy is offered.
+    await page.evaluate(() => Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }));
+    await page.getByRole('button', { name: 'Invite someone else', exact: true }).click();
+    await page.locator('#invite-name').fill('Dad');
+    await page.locator('#invite-token').fill(FAKE.dad);
+    await page.getByRole('button', { name: 'Check key and make the link', exact: true }).click();
+    await page.getByRole('heading', { name: "Dad's link is ready" }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Share link' }).count(), 0, 'no Share without a share sheet');
+    assert.match(await mainText(page), /It works until about /, 'unknown expiry: the planned 90 days');
+    await page.getByRole('button', { name: 'Copy link', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#share-status')?.textContent.startsWith('Copied'));
+    assert.equal(JSON.parse(Buffer.from(new URL(await page.evaluate(() => window.__copied)).hash.slice(8), 'base64url').toString()).n, 'Dad');
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+    await page.locator('main.settings').waitFor();
+    assert.deepEqual(await page.locator('.invite-item .set-name').allInnerTexts(), ['Dad', 'Mom']);
+    assert.deepEqual(await page.locator('.invite-key').allInnerTexts(), ['…8765', '…4321']);
+    await page.locator('.invite-item[data-invite]').last().scrollIntoViewIfNeeded();
+    const [list] = await Promise.all([context.waitForEvent('page'), page.locator('.invite-item').last().getByRole('link', { name: 'Stop access' }).click()]);
+    await list.waitForLoadState();
+    assert.equal(list.url(), 'https://github.com/settings/personal-access-tokens', "GitHub's fine-grained token list");
+    await list.close();
+    assert.match(await page.locator('.invite-item').last().locator('.invite-stop-note').innerText(), /open “MK Cinema – Mom” and press Delete/);
+    await page.locator('.invite-item').first().scrollIntoViewIfNeeded();
+    await inviteShot(page, 'owner-5-list');
+    await checkLayout(page);
+    await page.getByRole('button', { name: 'Remove Dad from the list', exact: true }).click();
+    assert.deepEqual(await page.locator('.invite-item .set-name').allInnerTexts(), ['Mom']);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('mkc.invites')).map(item => item.name)), ['Mom']);
+    await context.close();
+  });
+
+  await record('invite: an owner who opens an invite keeps his own key unless he switches', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await context.addInitScript(owner => { if (!localStorage.getItem('mkc.token')) localStorage.setItem('mkc.token', owner); }, FAKE.owner);
+    await mockGitHub(context);
+    const page = await context.newPage();
+    watch(page, 'invite owner device');
+    await page.goto(`${origin}/${inviteHash('Mom', FAKE.guest)}`);
+    await page.locator('main.invite-owner').waitFor();
+    assert.equal(await page.evaluate(() => location.hash), '');
+    await page.getByRole('button', { name: 'Keep my key', exact: true }).click();
+    await page.locator('main.library').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.owner);
+    // Opening a link in a tab where the app already runs changes only the fragment.
+    await page.evaluate(hash => { location.hash = hash; }, inviteHash('Mom', FAKE.guest));
+    await page.locator('main.invite-owner').waitFor();
+    assert.equal(await page.evaluate(() => location.hash), '');
+    await page.getByRole('button', { name: "Switch to Mom's invite", exact: true }).click();
+    await page.locator('main.welcome').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.guest);
+    await context.close();
+  });
+
+  await record('invite: no key ever appears in a request URL, on the wire or in the console', async () => {
+    const hits = list => list.filter(text => keys.some(key => text.includes(key)) || text.includes('invite='));
+    assert.ok(wire.length > 0 && leaks.requests.length > 0, 'requests were recorded');
+    assert.deepEqual(hits(wire), [], 'the server never saw a key or an invite');
+    assert.deepEqual(hits(leaks.requests), [], 'no request URL carries a key');
+    assert.deepEqual(hits(leaks.console), [], 'nothing printed a key');
+  });
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

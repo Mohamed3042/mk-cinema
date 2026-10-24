@@ -1,4 +1,4 @@
-import { CinemaError, getCatalog, getPoster, getVideoURL, downloadVideo, forgetPosters } from './api.js';
+import { CinemaError, getCatalog, getPoster, getVideoURL, downloadVideo, forgetPosters, checkKey } from './api.js';
 import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms, readList, saveList, inList, toggleList, listGroups, splitTitle, kindLabel } from './catalog.js';
 import { MAX_WHOLE_BYTES, claimPreview, reduced, onReducedChange } from './motion.js';
 import { startPreview } from './previews.js';
@@ -12,7 +12,11 @@ import { mountReel } from './reel.js';
 import { mountPlayer } from './player.js';
 import { watchViewport, diagnostics } from './viewport.js';
 import { KINDS, readSettings, writeSettings, toggleKind, reelKinds, reelDeck, nextRound } from './settings.js';
+import { OWNER, REPO, NAME_MAX, TOKENS_PAGE, takeInvite, readGuest, writeGuest, readInvites, addInvite, removeInvite, tokenPageURL, inviteLink, cleanName, isFineGrained } from './invite.js';
 
+// An invite link carries a guest's key in the fragment (#invite=…). It is read and removed from the address first,
+// before anything else runs; browsers never send a fragment to a server.
+const arrival = takeInvite();
 watchViewport(); // the player follows window changes (rotation, toolbars)
 const main = document.querySelector('main');
 const topbar = document.querySelector('#topbar');
@@ -29,13 +33,16 @@ let storage;
 try { storage = localStorage; } catch { /* Watching also works with storage blocked. */ }
 const progressKey = demo ? 'mkc.demo.progress' : 'mkc.progress';
 const listKey = demo ? 'mkc.demo.list' : 'mkc.list';
+// A device that opened an invite: { name, left }. The guest's key is kept under mkc.token like the owner's.
+let guest = demo ? null : readGuest(storage), pendingInvite = null;
+const isGuest = () => Boolean(guest && !guest.left);
 let listIds = readList(storage, listKey), prefs = readSettings(storage), listFrom = null, restore = null, reelResume = null;
 const desktopQuery = matchMedia('(min-width: 900px)');
 const filters = ['All', 'MK Voice', 'Business OS', 'Talent Atlas', 'Job Orbit', 'Suite & apps', 'More', 'Ads', 'Demos', 'Arabic'];
 const TABS = [['home', 'Home'], ['new', 'New & Hot'], ['films', 'Films'], ['ads', 'Ads'], ['demos', 'Demos'], ['reels', 'Reels'], ['list', 'My List']];
 const PHONE_TABS = [['home', 'Home', 'home'], ['new', 'New & Hot', 'flame'], ['reels', 'Reels', 'reels'], ['search', 'Search', 'search'], ['settings', 'Settings', 'settings']];
 // Screens that live under the tab bars. Reels and Settings are tabs; a detail sheet opens over a library tab.
-const TABBED = ['library', 'reel', 'settings'];
+const TABBED = ['library', 'reel', 'settings', 'invite'];
 const KIND_NAMES = { films: 'Films', ads: 'Ads', demos: 'Demos' };
 const kindTabs = { films: ['Films', 'FILMS'], ads: ['Ads', 'ADS & LOOPS'], demos: ['Demos', 'DEMOS'] };
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -63,6 +70,10 @@ const iconPaths = {
   list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>',
   film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>',
   reels: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M3.5 8.5h17M8.5 3.5l2.6 5M14 3.5l2.6 5"/><path d="M10.4 12.2v4.6l4-2.3Z" fill="currentColor" stroke="none"/>',
+  share: '<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5v10h14V11h-1"/>', copy: '<rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/>',
+  people: '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20a6.2 6.2 0 0 1 12.4 0"/><circle cx="17.2" cy="9.2" r="2.6"/><path d="M16.4 14.1A5 5 0 0 1 21.4 19"/>',
+  ticket: '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4Z"/><path d="M15 6v2m0 3v2m0 3v2"/>',
+  key: '<circle cx="8" cy="15" r="4.5"/><path d="m11.2 11.8 9-9M17 6l3 3M14.5 8.5l2 2"/>',
   shuffle: '<path d="M3 7h3.2c1.9 0 3.1.9 4.2 2.5l3.2 5c1.1 1.6 2.3 2.5 4.2 2.5H21M3 17h3.2c1.4 0 2.4-.5 3.3-1.4M14.3 8.4c.9-.9 1.9-1.4 3.3-1.4H21M18 4l3 3-3 3M18 14l3 3-3 3"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconPaths[name] || ''}</svg>`;
@@ -195,7 +206,8 @@ function chrome() {
     tabbar.innerHTML = desktop ? '' : PHONE_TABS.map(([id, label, symbol]) => `<button data-nav="${id}" ${id === 'search' ? 'data-action="search"' : `data-tab="${id}"`}>${icon(symbol)}<span>${label}</span></button>`).join('');
   }
   // My List has no phone tab: opened from Settings, the Settings tab stays lit.
-  const current = searching ? 'search' : tab === 'list' && !desktop ? 'settings' : tab;
+  // Invite someone is a page of Settings: the Settings tab (and gear) stays lit.
+  const current = searching ? 'search' : (tab === 'list' && !desktop) || tab === 'invite' ? 'settings' : tab;
   for (const button of document.querySelectorAll('[data-nav]')) {
     if (button.dataset.nav === current) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   }
@@ -314,6 +326,7 @@ function library() {
   if (!catalog?.films.length) { stateScreen('empty'); return; }
   if (tab === 'reels') { reelScreen(); return; }
   if (tab === 'settings') { settingsScreen(); return; }
+  if (tab === 'invite') { inviteScreen(); return; }
   const all = groupsOf(), progress = readProgress(storage, progressKey);
   const filterScroll = main.querySelector('.filters')?.scrollLeft || 0;
   screen = 'library';
@@ -418,8 +431,9 @@ function settingsView({ solo = false } = {}) {
 ${group('playback', 'Playback', `${switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.')}${choiceRow('player-fit', 'Picture in the player', [['fit', 'Fit'], ['fill', 'Fill']], prefs.playerFit, 'Fit shows the whole film. Fill covers the screen and can trim its edges. A pinch in the player switches too.')}`)}
 ${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder)}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
 ${catalog ? group('list', 'My List', `<button class="set-row set-link" data-action="open-list"><span class="set-name">Open My List</span><span class="set-value">${plural(saved)}</span>${icon('arrow')}</button>`) : ''}
-${group('connection', 'Connection', `<div class="set-row"><span class="set-name">Token</span><span class="set-value">${tokenState}</span></div><button class="set-row set-link set-danger" id="forget-token" data-action="forget-token" aria-describedby="forget-note"><span class="set-name">Forget token</span></button><p class="set-foot" id="forget-note">Removes the token and cached posters, then goes back to Connect.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`)}
-${group('about', 'About', `${catalog ? `<div class="set-row"><span class="set-name">Titles</span><span class="set-value">${all.length}</span></div>` : ''}<div class="set-row"><span class="set-name">Collection</span><span class="set-value">${demo ? 'Demo' : 'Private'}</span></div><div class="set-row"><span class="set-name">App shell</span><span class="set-value" id="shell-version">Checking…</span></div><p class="set-foot" id="screen-info"></p>`)}
+${isGuest() ? group('sharing', 'Sharing', `<div class="set-row"><span class="set-name">Shared by</span><span class="set-value">${OWNER}</span></div><div class="set-row"><span class="set-name">Invite for</span><span class="set-value" dir="auto">${escape(guest.name)}</span></div><button class="set-row set-link set-danger" data-action="leave" aria-describedby="leave-note"><span class="set-name">Leave</span></button><p class="set-foot" id="leave-note">Forgets this invite on this device. ${OWNER}'s cinema stays as it is.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`) : `${!demo && token ? group('invites', 'Invites', invitesRows()) : ''}
+${group('connection', 'Connection', `<div class="set-row"><span class="set-name">Token</span><span class="set-value">${tokenState}</span></div><button class="set-row set-link set-danger" id="forget-token" data-action="forget-token" aria-describedby="forget-note"><span class="set-name">Forget token</span></button><p class="set-foot" id="forget-note">Removes the token and cached posters, then goes back to Connect.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`)}`}
+${group('about', 'About', `${catalog ? `<div class="set-row"><span class="set-name">Titles</span><span class="set-value">${all.length}</span></div>` : ''}<div class="set-row"><span class="set-name">Collection</span><span class="set-value">${demo ? 'Demo' : isGuest() ? `Shared by ${OWNER}` : 'Private'}</span></div><div class="set-row"><span class="set-name">App shell</span><span class="set-value" id="shell-version">Checking…</span></div><p class="set-foot" id="screen-info"></p>`)}
 </section>`;
 }
 function settingsScreen({ solo = false } = {}) {
@@ -435,6 +449,176 @@ async function showShell(stamp) {
   if (stamp === revision) main.querySelector('#shell-version')?.replaceChildren(text);
 }
 function saveSettings() { writeSettings(storage, prefs); }
+
+// Invites (owner): one read-only key per person, made on GitHub's pre-filled page, checked here, then shared as a link
+// with the key in its fragment. The list on this device keeps only each key's last four characters, never a key.
+function invitesRows() {
+  const now = Date.now();
+  const rows = readInvites(storage).map(item => {
+    const ended = Date.parse(item.expires) <= now, id = escape(item.id), name = escape(item.name);
+    const when = `Made ${formatDate(item.made)} · ${ended ? 'ended' : 'ends'} ${item.expiresKnown ? '' : 'about '}${formatDate(item.expires)}`;
+    return `<div class="set-row set-stack invite-item" data-invite="${id}"><div class="invite-line"><span class="set-name" dir="auto">${name}</span><span class="set-value invite-key" aria-label="Key ending ${escape(item.last4.split('').join(' '))}">${icon('key')}…${escape(item.last4)}</span></div><small class="set-note">${when}</small><div class="invite-actions"><a class="set-pill" href="${TOKENS_PAGE}" target="_blank" rel="noopener noreferrer" data-stop="${id}" aria-describedby="stop-${id}">Stop access</a><button class="set-pill" data-action="remove-invite" data-id="${id}" aria-label="Remove ${name} from the list">Remove from list</button></div><p class="invite-stop-note" id="stop-${id}" hidden>On GitHub, open “MK Cinema – ${name}” and press Delete. ${name}'s link stops working at once.</p></div>`;
+  }).join('');
+  return `<button class="set-row set-link" data-action="open-invite"><span class="set-text"><span class="set-name">Invite someone</span><small class="set-note">A link for family or friends, with a key of their own.</small></span>${icon('arrow')}</button>${rows}`;
+}
+let invite = null; // the link just made: { name, link }. Memory only, gone when the page closes.
+const KEY_ERRORS = {
+  token: 'GitHub refused this key. Copy it again, or make a new one in step 2.',
+  access: `This key can't see ${REPO}. On GitHub, set Repository access to Only select repositories, then ${REPO}.`,
+  write: 'This key can change files. Delete it on GitHub and make one with Contents: Read-only.',
+  'rate-limit': 'GitHub needs a pause. Try again in a few minutes.',
+  offline: 'You are offline. Connect, then try again.',
+  'github-unreachable': 'GitHub could not be reached. Try again in a moment.',
+  invalid: `The key works, but ${REPO} has no readable cinema.json.`,
+};
+function inviteView() {
+  return `<section class="settings-page invite-page" aria-labelledby="invite-title"><div class="settings-head"><button class="icon-button" data-action="back-settings" aria-label="Back to Settings">${icon('back')}</button><h1 id="invite-title" tabindex="-1">Invite someone</h1></div>
+<div class="invite-flow"><p class="invite-lead">Each person gets a key of their own, so you can stop one without touching the others. Their link works even when your PC is off.</p>
+<section class="set-group" aria-labelledby="step-1"><h2 class="set-label invite-step" id="step-1"><b>1</b><span>Who is it for?</span></h2><div class="set-card"><div class="set-row set-stack"><label class="set-name" for="invite-name">Their name</label><input class="field" id="invite-name" type="text" maxlength="${NAME_MAX}" placeholder="Mom" autocomplete="off" enterkeyhint="done" dir="auto"></div></div></section>
+<section class="set-group" aria-labelledby="step-2"><h2 class="set-label invite-step" id="step-2"><b>2</b><span>Make <span data-who>their</span> key on GitHub</span></h2><div class="set-card"><div class="set-row set-stack"><a class="primary invite-github" id="invite-github" target="_blank" rel="noopener noreferrer" aria-disabled="true" aria-describedby="invite-how">${icon('key')}<span data-github-label>Type a name first</span></a><ol class="invite-how" id="invite-how"><li><span>The name, 90 days and <strong>Contents: Read-only</strong> are filled in for you.</span></li><li><span>Under Repository access, choose <strong>Only select repositories</strong>, then <strong>${REPO}</strong>.</span></li><li><span>Press <strong>Generate token</strong> and copy it.</span></li></ol></div></div></section>
+<section class="set-group" aria-labelledby="step-3"><h2 class="set-label invite-step" id="step-3"><b>3</b><span>Paste the new key</span></h2><div class="set-card"><form class="set-row set-stack" id="invite-form" novalidate><label class="sr-only" for="invite-token">New key from GitHub</label><input class="field" id="invite-token" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="invite-status"><button class="primary" type="submit">${icon('check')}Check key and make the link</button><p class="invite-status" id="invite-status" role="status"></p></form></div></section></div>
+<section class="invite-ready" id="invite-ready" aria-labelledby="ready-title" hidden></section></section>`;
+}
+function inviteScreen() {
+  invite = null;
+  mount('invite', inviteView(), { focus: false });
+  live.invite = { destroy() { invite = null; } };
+  syncInviteName();
+}
+function syncInviteName() {
+  const name = cleanName(main.querySelector('#invite-name')?.value), link = main.querySelector('#invite-github');
+  if (!link) return;
+  if (name) { link.href = tokenPageURL(name); link.removeAttribute('aria-disabled'); }
+  else { link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true'); }
+  link.querySelector('[data-github-label]').textContent = name ? `Make ${name}'s key on GitHub` : 'Type a name first';
+  main.querySelector('[data-who]').textContent = name ? `${name}'s` : 'their';
+}
+async function makeInvite() {
+  const nameInput = main.querySelector('#invite-name'), keyInput = main.querySelector('#invite-token');
+  const status = main.querySelector('#invite-status'), button = main.querySelector('#invite-form [type=submit]');
+  const name = cleanName(nameInput.value), key = keyInput.value.trim();
+  [nameInput, keyInput].forEach(el => el.removeAttribute('aria-invalid')); delete status.dataset.tone;
+  const fail = (text, field = keyInput) => { status.textContent = text; status.dataset.tone = 'error'; field.setAttribute('aria-invalid', 'true'); field.focus(); };
+  if (!name) return fail('Type their name first (step 1).', nameInput);
+  if (!key) return fail(`Paste the key GitHub made for ${name}.`);
+  // The owner's own key never goes into a link: each person gets a separate one.
+  if (key === token) return fail(`This is your own key. Make a new one for ${name} in step 2.`);
+  if (!isFineGrained(key)) return fail(/^gh[a-z]_/u.test(key) ? 'This is a classic key, which can open all your repositories. Make a fine-grained key in step 2.' : "This doesn't look like a GitHub key. Copy it again from GitHub.");
+  const stamp = revision;
+  button.disabled = true; status.textContent = 'Checking the key with GitHub…';
+  try {
+    const result = await checkKey(key, { signal: operation.signal });
+    if (stamp !== revision) return;
+    invite = { name, link: inviteLink(location.href, { name, token: key }) };
+    addInvite(storage, { name, token: key, expires: result.expires });
+    keyInput.value = '';
+    showReady(name, result.expires);
+  } catch (error) {
+    if (error.name === 'AbortError' || stamp !== revision) return;
+    button.disabled = false;
+    fail(KEY_ERRORS[error.code] || KEY_ERRORS.invalid);
+  }
+}
+function showReady(name, expires) {
+  const share = typeof navigator.share === 'function', app = new URL('./', location.href), who = escape(name);
+  const until = `${expires ? '' : 'about '}${formatDate(expires || new Date(Date.now() + 90 * 86400000).toISOString())}`;
+  main.querySelector('.invite-flow').hidden = true;
+  const ready = main.querySelector('#invite-ready');
+  ready.innerHTML = `<div class="invite-ticket"><div class="success-icon">${icon('check')}</div><h2 id="ready-title" dir="auto" tabindex="-1">${who}'s link is ready</h2><p>Anyone with this link can watch, so send it to ${who} only. It works until ${until}.</p><p class="invite-url" aria-hidden="true">${escape(app.host + app.pathname)}<span>#invite=••••••••</span></p></div><div class="invite-share">${share ? `<button class="primary" data-action="share-invite">${icon('share')}Share link</button>` : ''}<button class="${share ? 'secondary' : 'primary'}" data-action="copy-invite">${icon('copy')}Copy link</button></div><p class="invite-status" id="share-status" role="status"></p><p class="invite-warn">${icon('alert')}<span>Apps can't read a key's permissions. If you changed anything on GitHub, check that this key says Contents: Read-only.</span></p><div class="invite-after"><button class="text-button" data-action="invite-another">Invite someone else</button><button class="text-button" data-action="back-settings">Done</button></div>`;
+  ready.hidden = false;
+  window.scrollTo(0, 0);
+  ready.querySelector('h2').focus({ preventScroll: true });
+}
+// Share opens the phone's share sheet; where there is none, or it fails, the link is copied instead.
+async function shareInvite() {
+  if (!invite) return;
+  const status = main.querySelector('#share-status');
+  try {
+    await navigator.share({ title: 'MK Cinema', text: `${OWNER} shared his cinema with you.`, url: invite.link });
+    status.textContent = `Sent. ${invite.name} can open it on any phone or computer.`;
+  } catch (error) {
+    if (error?.name === 'AbortError') { status.textContent = 'Not sent yet. Share or copy it when you are ready.'; return; }
+    await copyInvite();
+  }
+}
+async function copyInvite() {
+  if (!invite) return;
+  const status = main.querySelector('#share-status');
+  let done = false;
+  try { await navigator.clipboard.writeText(invite.link); done = true; } catch {
+    const area = document.createElement('textarea');
+    area.value = invite.link; area.readOnly = true; area.className = 'sr-only'; document.body.append(area); area.select();
+    try { done = document.execCommand('copy'); } catch { /* no clipboard at all */ }
+    area.remove();
+  }
+  status.textContent = done ? `Copied. Paste it in a message to ${invite.name}.` : 'This browser could not copy. Try Share, or another browser.';
+}
+
+// Guests: a device that opened an invite. No connect form and no GitHub words; an ended key gets a calm screen.
+const GUEST_SCREENS = {
+  'invite-ended': ['ticket', 'This invite has ended', `Ask ${OWNER} for a new link.`],
+  'invite-bad': ['alert', 'This invite link is incomplete', `Ask ${OWNER} to send it again,<br>then open the whole link.`],
+  'invite-left': ['home', `You left ${OWNER}'s cinema`, 'To come back, open his invite link again.'],
+};
+function guestScreen(kind) {
+  const [symbol, heading, copy] = GUEST_SCREENS[kind];
+  const actions = kind === 'invite-ended' ? `<button class="primary" data-action="retry">${icon('retry')}Try again</button><button class="text-button" data-action="leave">Forget this invite</button>`
+    : kind === 'invite-bad' && token ? `<button class="primary" data-action="retry">${icon('play')}Open the cinema</button>` : '';
+  screen = kind; restore = () => guestScreen(kind);
+  mount(kind, `${header()}<section class="recovery guest-state"><div class="recovery-copy"><div class="state-icon">${icon(symbol)}</div><h1>${heading}</h1><p>${copy}</p></div>${actions ? `<div class="guest-actions">${actions}</div>` : ''}</section>`);
+}
+function inviteOwnerChoice(arrived) {
+  pendingInvite = arrived; screen = 'invite-owner'; restore = () => inviteOwnerChoice(arrived);
+  const name = escape(arrived.name);
+  mount('invite-owner', `${header()}<section class="recovery guest-state"><div class="recovery-copy"><div class="state-icon">${icon('people')}</div><h1>This device already opens your cinema</h1><p>This link is ${name}'s invite. Keep your own key, or switch this device to ${name}'s.<br><span class="muted">Switching forgets your key here.</span></p></div><div class="guest-actions"><button class="primary" data-action="keep-key">Keep my key</button><button class="secondary" data-action="switch-invite"><span dir="auto">Switch to ${name}'s invite</span></button></div></section>`);
+}
+async function openInvite(arrived) {
+  if (arrived.bad) { guestScreen('invite-bad'); return; }
+  if (isGuest() && token === arrived.token) { await loadLibrary(); return; } // the same link, opened again
+  if (token && !isGuest()) { inviteOwnerChoice(arrived); return; }
+  await acceptInvite(arrived);
+}
+async function acceptInvite(arrived) {
+  pendingInvite = null;
+  if (token && token !== arrived.token) { operation.abort(); await forgetPosters(); clearPosters(); clearPreviews(); catalog = undefined; reelResume = null; }
+  token = arrived.token;
+  try { localStorage.setItem('mkc.token', token); } catch { /* blocked storage: the invite holds for this visit */ }
+  guest = { name: arrived.name, left: false }; writeGuest(storage, guest);
+  tab = 'home'; listFrom = null;
+  welcome();
+}
+// The welcome loads the cinema behind it, so Start watching opens at once and an ended key shows its screen.
+let welcomeLoad;
+function welcome() {
+  restore = welcome;
+  mount('welcome', `<section class="welcome" aria-labelledby="welcome-title"><div class="welcome-glow" aria-hidden="true"></div><p class="welcome-brand">${brand}</p><div class="welcome-fan" aria-hidden="true">${[0, 1, 2].map(() => '<figure class="welcome-card"></figure>').join('')}</div><div class="welcome-copy"><p class="kicker">An invite from ${OWNER}</p><h1 id="welcome-title" dir="auto">Hi ${escape(guest.name)}</h1><p class="welcome-line">${OWNER} shared his cinema with you.</p><p class="welcome-sub">His films, on this screen, whenever you like.</p></div><div class="welcome-actions"><button class="primary" data-action="enter">${icon('play')}Start watching</button><p class="welcome-tip">Add it to your home screen to come back in one tap.</p></div></section>`);
+  const stamp = revision;
+  welcomeLoad = getCatalog({ demo, token, signal: operation.signal });
+  welcomeLoad.then(result => {
+    if (stamp !== revision) return;
+    if (catalog?.updated !== result.updated) clearPosters();
+    catalog = result;
+    const picks = groupsOf().slice(0, 3);
+    main.querySelectorAll('.welcome-card').forEach((card, index) => { if (picks[index]) card.innerHTML = poster(picks[index]); else card.remove(); });
+    void fillPosters(stamp);
+  }, error => { if (error.name !== 'AbortError' && stamp === revision) showError(error); });
+}
+async function enter() {
+  const stamp = revision;
+  main.querySelector('[data-action="enter"]').disabled = true;
+  try { await welcomeLoad; } catch { return; }
+  if (stamp === revision) library();
+}
+async function leave() {
+  try {
+    operation.abort();
+    try { localStorage.removeItem('mkc.token'); } catch { /* nothing stored */ }
+    token = ''; guest = { name: guest?.name || 'Guest', left: true }; writeGuest(storage, guest);
+    await forgetPosters(); clearPosters(); clearPreviews(); catalog = undefined; film = undefined; savedFile = undefined;
+    reelResume = null; tab = 'home'; listFrom = null;
+    guestScreen('invite-left');
+  } catch { const status = main.querySelector('#settings-status'); if (status) status.textContent = 'Could not clear browser storage. Try again.'; }
+}
 function feedView(all) {
   const shown = all.slice(0, 24); // newest first; a long library does not become an endless feed
   const item = f => `<article class="hot-item" data-film="${escape(f.id)}" aria-label="${escape(f.title)}"><div class="hot-stage">${poster(f, 'hot-poster')}<video class="hot-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="hot-shade"></div><i class="hot-bar" aria-hidden="true"></i></div><div class="hot-copy"><p class="hot-date">${isNew(f) ? '<span class="new-badge">NEW</span>' : ''}${Date.parse(f.added) ? `<time datetime="${escape(f.added)}">${formatDate(f.added)}</time>` : 'Date unavailable'}</p><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'hot-name')}<p class="blurb">${escape(f.blurb)}</p><div class="hot-actions"><button class="primary hot-play" data-play-film="${escape(f.id)}" aria-label="Play ${escape(f.title)}">${icon('play')}Play</button>${listButton(f)}<button class="icon-button round" data-film="${escape(f.id)}" aria-label="More info: ${escape(f.title)}">${icon('info')}</button></div></div></article>`;
@@ -547,7 +731,9 @@ function stateScreen(state) {
   mount(state, `${header()}<section class="recovery"><div class="stage-light" aria-hidden="true"></div><div class="recovery-copy">${symbol ? `<div class="state-icon">${icon(symbol)}</div>` : ''}<h1>${heading}</h1><p>${copy}</p></div><button class="primary" data-action="${state==='access' ? 'connect' : 'retry'}">${icon('retry')}${state==='empty'?'Refresh':state==='access'?'Update token':'Retry'}</button></section>`);
 }
 function showError(error) {
-  if (error.code === 'token') connect('Token is wrong or expired');
+  // A guest's key that GitHub no longer accepts (revoked, expired, or its repository access removed) ends the invite.
+  if (isGuest() && ['token', 'access'].includes(error.code)) guestScreen('invite-ended');
+  else if (error.code === 'token') connect('Token is wrong or expired');
   else stateScreen(error.code || (navigator.onLine ? 'github-unreachable' : 'offline'));
 }
 async function playbackURL(signal, whole = false, onProgress) {
@@ -667,14 +853,19 @@ async function deliverFile() {
   }
 }
 main.addEventListener('submit',async event=>{
+  if(event.target.id==='invite-form') { event.preventDefault(); await makeInvite(); return; }
   if(event.target.id!=='connect-form') return; event.preventDefault();
   const input=main.querySelector('#token'); const value=input.value.trim();
   if(!value) return;
   if(demo) { await loadLibrary(); return; }
-  try { localStorage.setItem('mkc.token',value); token=value; } catch { connect('Browser storage is blocked. Enable storage for this site.'); return; }
+  try { localStorage.setItem('mkc.token',value); token=value; guest=null; writeGuest(storage,null); } catch { connect('Browser storage is blocked. Enable storage for this site.'); return; }
   await loadLibrary();
 });
 async function onClick(event) {
+  // Stop access opens GitHub's token list in a new tab and says what to press there.
+  const stop = event.target.closest('a[data-stop]');
+  if (stop) { const note = main.querySelector(`#stop-${CSS.escape(stop.dataset.stop)}`); if (note) note.hidden = false; return; }
+  if (event.target.closest('#invite-github[aria-disabled]')) { event.preventDefault(); main.querySelector('#invite-name')?.focus(); return; }
   // A tap on the picture of a New & Hot film opens its details, like the info button.
   const stage = event.target.closest('.hot-stage');
   if (stage && !event.target.closest('button') && main.contains(stage)) { chooseFilm(stage.closest('.hot-item').dataset.film, false, stage); return; }
@@ -704,6 +895,15 @@ async function onClick(event) {
     case 'open-list': tab = 'list'; listFrom = 'settings'; activeFilter = 'All'; query = ''; searching = false; gridMode = false; exploreRow = null; swap(library); break;
     case 'back-settings': go('settings'); break;
     case 'forget-token': await forgetToken(); break;
+    case 'open-invite': if (catalog && !isGuest() && !demo) { tab = 'invite'; listFrom = null; activeFilter = 'All'; query = ''; searching = false; gridMode = false; exploreRow = null; swap(library); } break;
+    case 'invite-another': inviteScreen(); main.querySelector('#invite-name').focus(); break;
+    case 'share-invite': await shareInvite(); break;
+    case 'copy-invite': await copyInvite(); break;
+    case 'remove-invite': { removeInvite(storage, button.dataset.id); const row = button.closest('.invite-item'); main.querySelector('[data-action="open-invite"]')?.focus(); row?.remove(); announce('Removed from the list. The link still works until you stop it on GitHub.'); break; }
+    case 'enter': await enter(); break;
+    case 'leave': await leave(); break;
+    case 'keep-key': pendingInvite = null; await loadLibrary(); break;
+    case 'switch-invite': if (pendingInvite) await acceptInvite(pendingInvite); break;
     case 'play': await play(); break;
     case 'save': await save(); break;
     case 'cancel-save': filmPage(); break;
@@ -712,6 +912,7 @@ async function onClick(event) {
 }
 [main, topbar, tabbar].forEach(el => el.addEventListener('click', onClick));
 main.addEventListener('input', event => {
+  if (event.target.id === 'invite-name') { syncInviteName(); return; }
   if(event.target.id !== 'film-search') return;
   const caret = event.target.selectionStart;
   query = event.target.value; library();
@@ -771,9 +972,12 @@ async function start() {
   if(preview==='connect' || preview==='connect-error') { connect(preview==='connect-error'?'Token is wrong or expired':''); return; }
   if(preview==='loading') { loading(); return; }
   if(preview && messages[preview]) { stateScreen(preview); return; }
-  if(!demo && !token) { connect(); return; }
+  if(!demo && arrival) { await openInvite(arrival); return; }
+  if(!demo && !token) { if (guest?.left) guestScreen('invite-left'); else connect(); return; }
   await loadLibrary();
   if(demo && catalog && ['save-progress','saved'].includes(preview)) { film=catalog.films[0]; version=film.versions[0]; saveScreen(preview,true); }
 }
 void start();
+// An invite opened in a tab where the app is already open only changes the fragment: the page does not reload.
+addEventListener('hashchange', () => { const next = takeInvite(); if (next && !demo) void openInvite(next); });
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{/* The app also works without offline shell caching. */});

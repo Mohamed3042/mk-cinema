@@ -358,3 +358,82 @@ label.set-row,.set-link{cursor:pointer}
   *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   .hot-video,.billboard-video,.bob-video,.detail-video{display:none}
 }
+
+/* Invites. The owner's three steps sit in the Settings glass; the ready link is a ticket. Guests get calm screens. */
+.screen.invite{max-width:none;padding:0}
+.invite-lead{margin:-10px 4px 26px;font-size:15px;line-height:1.5;color:var(--muted)}
+.invite-step{display:flex;align-items:center;gap:10px}
+.invite-step b{display:grid;place-items:center;flex:0 0 22px;height:22px;border-radius:50%;background:#fff;color:#05060a;font-size:12px;letter-spacing:0}
+.field{display:block;width:100%;min-height:52px;margin:0;padding:14px 16px;border:1px solid var(--glass-line);border-radius:14px;background:rgba(255,255,255,.06);color:#fff;font-size:17px}
+.field::placeholder{color:rgba(255,255,255,.38)}
+.field:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.field[aria-invalid=true]{border-color:var(--error)}
+a.primary,a.set-pill{text-decoration:none}
+.invite-page .primary{min-height:54px;font-size:16.5px}
+.invite-page .primary svg{flex:0 0 20px;width:20px;height:20px}
+.invite-github[aria-disabled]{opacity:.42;cursor:default;box-shadow:none}
+.invite-how{display:grid;gap:10px;margin:2px 0 0;padding:0;list-style:none;counter-reset:how}
+.invite-how li{counter-increment:how;display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;font-size:14.5px;line-height:1.45;color:var(--muted)}
+.invite-how li::before{content:counter(how);display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.28);border-radius:50%;color:#fff;font-size:12px;font-weight:600}
+.invite-how strong{color:#fff;font-weight:600}
+.invite-status{margin:0;font-size:14px;line-height:1.45;color:var(--muted)}
+.invite-status:empty{display:none}
+.invite-status[data-tone=error]{color:var(--error)}
+.invite-ready:not([hidden]){display:grid;gap:14px}
+.invite-ticket{position:relative;display:grid;justify-items:center;gap:10px;padding:30px 22px 22px;text-align:center;border:1px solid var(--glass-line);border-radius:24px;background:radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.15),rgba(255,255,255,.04) 62%);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge),0 30px 60px -30px rgba(0,0,0,.9)}
+.invite-ticket::before,.invite-ticket::after{content:'';position:absolute;bottom:52px;width:22px;height:22px;border-radius:50%;background:#05060a;border:1px solid var(--glass-line)}
+.invite-ticket::before{left:-12px;clip-path:inset(0 0 0 50%)}
+.invite-ticket::after{right:-12px;clip-path:inset(0 50% 0 0)}
+.invite-ticket .success-icon{width:58px;height:58px;margin:0 0 4px;background:rgba(255,255,255,.08)}
+.invite-ticket h2{margin:0;font:600 27px/1.15 DM,Arabic,sans-serif;letter-spacing:-.025em;color:#fff;outline:none}
+.invite-ticket p{margin:0;font-size:15px;line-height:1.5}
+.invite-ticket .invite-url{width:100%;margin-top:12px;padding-top:16px;border-top:1px dashed rgba(255,255,255,.2);font:13px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:rgba(255,255,255,.62);overflow-wrap:anywhere}
+.invite-url span{color:rgba(255,255,255,.34)}
+.invite-share{display:grid;gap:10px}
+.invite-share .primary,.invite-share .secondary{min-height:56px;font-size:17px}
+.invite-share svg{width:20px;height:20px}
+.invite-warn{display:flex;gap:10px;margin:2px 0 0;padding:12px 14px;border:1px solid rgba(255,200,130,.2);border-radius:14px;background:rgba(255,200,130,.07);font-size:13.5px;line-height:1.45;color:rgba(255,236,214,.84)}
+.invite-warn svg{flex:0 0 18px;width:18px;height:18px;margin-top:1px}
+.invite-after{display:flex;justify-content:space-between;gap:8px}
+.invite-after .text-button{min-height:44px;padding:0 8px;color:#fff;font-weight:600}
+.invite-item{gap:8px}
+.invite-line{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.invite-key{display:inline-flex;align-items:center;gap:6px;font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.invite-key svg{width:15px;height:15px}
+.invite-actions{display:flex;flex-wrap:wrap;gap:8px}
+.set-pill{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border:1px solid var(--glass-line);border-radius:999px;background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-weight:600;transition:background .25s}
+.set-pill:hover{background:rgba(255,255,255,.16)}
+.set-pill[data-stop]{color:#ffb1a8}
+.invite-stop-note{margin:0;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.8)}
+.guest-state .recovery-copy h1{font-size:clamp(30px,9vw,40px)}
+.guest-actions{display:grid;gap:10px;width:min(100%,420px);margin:0 auto}
+.guest-actions .text-button{color:rgba(255,255,255,.78)}
+.screen.welcome{max-width:none;min-height:100svh;padding:0;overflow:hidden}
+.welcome{position:relative;isolation:isolate;display:grid;grid-template-rows:auto 1fr auto auto;justify-items:center;align-items:end;min-height:100svh;padding:max(26px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));text-align:center}
+.welcome-glow{position:absolute;inset:-12% -40% auto;z-index:-1;height:78%;background:radial-gradient(closest-side at 50% 55%,rgba(229,191,126,.2),transparent),radial-gradient(45% 40% at 28% 40%,rgba(140,110,255,.12),transparent 70%),radial-gradient(40% 40% at 74% 46%,rgba(255,110,120,.1),transparent 70%)}
+.welcome-brand{margin:0;align-self:start}
+.welcome-brand .wordmark{font-size:30px;letter-spacing:-1px}
+.welcome-fan{position:relative;width:min(330px,84vw);height:clamp(210px,38svh,340px);margin:18px 0 8px}
+.welcome-card{position:absolute;left:50%;bottom:0;width:47%;aspect-ratio:2/3;margin:0;overflow:hidden;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:linear-gradient(110deg,rgba(255,255,255,.05) 28%,rgba(255,255,255,.11) 46%,rgba(255,255,255,.05) 64%) 0 0/240% 100%;box-shadow:0 34px 60px -24px rgba(0,0,0,.9);transform-origin:50% 100%;transform:translateX(-50%) translate(var(--x),var(--y)) rotate(var(--r));animation:shimmer 1.3s linear infinite}
+.welcome-card:nth-child(1){--x:-46%;--y:-2%;--r:-10deg;z-index:1}
+.welcome-card:nth-child(2){--x:0%;--y:-9%;--r:0deg;z-index:3}
+.welcome-card:nth-child(3){--x:46%;--y:-2%;--r:10deg;z-index:2}
+.welcome-card.is-ready{animation:none;background:#0b0c12}
+.welcome-card .poster{display:block;width:100%;height:100%;border:0;border-radius:0;object-fit:cover}
+.welcome-copy .kicker{margin:0 0 10px;color:rgba(236,204,146,.92)}
+.welcome-copy h1{margin:0 0 12px;font:600 clamp(42px,13vw,60px)/1 DM,Arabic,sans-serif;letter-spacing:-.04em;color:#fff;overflow-wrap:anywhere}
+.welcome-line{margin:0;font-size:19px;line-height:1.4;color:rgba(255,255,255,.92)}
+.welcome-sub{margin:6px 0 0;font-size:15px;color:var(--muted)}
+.welcome-actions{display:grid;gap:12px;width:min(100%,400px);margin-top:30px}
+.welcome-actions .primary{min-height:58px;font-size:18px}
+.welcome-actions .primary svg{width:20px;height:20px}
+.welcome-tip{margin:0;font-size:13px;color:var(--muted);text-wrap:balance}
+@media(prefers-reduced-motion:no-preference){
+  .welcome-card.is-ready{animation:fan-in .9s var(--ease) both}
+  .welcome-card:nth-child(2).is-ready{animation-delay:90ms}.welcome-card:nth-child(3).is-ready{animation-delay:180ms}
+  @keyframes fan-in{from{opacity:0;transform:translateX(-50%) translate(0,14%) rotate(0deg)}}
+  .welcome-copy,.welcome-actions{animation:welcome-up .7s var(--ease) both}
+  .welcome-actions{animation-delay:.12s}
+  @keyframes welcome-up{from{opacity:0;transform:translateY(14px)}}
+}
+@media(prefers-reduced-transparency:reduce){.invite-ticket{background:#14161d;-webkit-backdrop-filter:none;backdrop-filter:none}}
