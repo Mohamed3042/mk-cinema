@@ -19,7 +19,7 @@
 .tab-ink.off{opacity:0}
 .topbar .header-actions{margin-left:auto}
 /* Phone: a floating frosted capsule above the home indicator. */
-.tabbar{position:fixed;inset:auto max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));z-index:30;display:flex;padding:6px;border-radius:999px;background:rgba(36,38,46,.5);border:1px solid var(--glass-line);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:0 14px 40px rgba(0,0,0,.45),var(--glass-edge)}
+.tabbar{position:fixed;inset:auto max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));z-index:30;display:flex;padding:6px;border-radius:999px;background:rgba(36,38,46,.5);border:1px solid var(--glass-line);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:0 14px 40px rgba(0,0,0,.45),var(--glass-edge);view-transition-name:tabbar}
 .tabbar button{flex:1;min-width:0;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:999px;background:transparent;color:rgba(255,255,255,.66);font-size:11px;font-weight:600;letter-spacing:.2px;transition:color .3s,background .3s}
 .tabbar button svg{transition:transform .45s var(--ease)}
 .tabbar button[aria-current=page]{color:#fff;background:rgba(255,255,255,.16)}
@@ -71,7 +71,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 .row-dashes:empty,.shelf:not([data-pages]) .row-dashes,.shelf[data-pages="1"] .row-dashes{display:none}
 .row-dashes i{width:12px;height:3px;border-radius:2px;background:rgba(255,255,255,.2);transition:background .3s,width .3s var(--ease)}
 .row-dashes i.on{width:18px;background:#fff}
-.explore{display:inline-flex;align-items:center;gap:2px;min-height:44px;padding:0;margin-inline-start:12px;background:transparent;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden}
+.explore{display:inline-flex;align-items:center;gap:2px;min-height:44px;padding:0;margin-inline-start:auto;background:transparent;color:#fff;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden}
 .explore svg{width:18px;height:18px}
 .row-viewport{position:relative}
 .card-track{margin-top:0;padding-top:6px;padding-bottom:10px}
@@ -126,7 +126,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 .detail-poster,.detail-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 38%;border:0;border-radius:0}
 .detail-video{opacity:0;transition:opacity .7s var(--ease)}
 .detail-art.is-playing .detail-video{opacity:1}
-.detail-shade{position:absolute;inset:0;background:linear-gradient(transparent 36%,rgba(20,22,29,.65) 68%,rgb(20,22,29)),linear-gradient(90deg,rgba(20,22,29,.5),transparent 55%)}
+.detail-shade{position:absolute;inset:0;background:linear-gradient(transparent 32%,rgba(20,22,29,.7) 66%,rgb(20,22,29)),linear-gradient(90deg,rgba(20,22,29,.6),transparent 58%)}
 .detail-hero{position:absolute;inset:auto 0 0;padding:0 20px 20px;z-index:1}
 .detail-hero .kicker{margin-bottom:8px;text-shadow:0 1px 10px rgba(0,0,0,.6)}
 .detail-hero h1{font-size:clamp(26px,5vw,44px);letter-spacing:-.03em;margin:0 0 14px;text-shadow:0 2px 16px rgba(0,0,0,.6)}
@@ -157,8 +157,12 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 @media(max-width:899px){
   #film-detail{margin:auto 0 0;width:100%;max-width:100%;max-height:94svh;border-width:1px 0 0;border-radius:20px 20px 0 0}
   .sheet-handle{display:block;position:absolute;z-index:4;top:8px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:rgba(255,255,255,.6)}
-  /* On a phone the picture is small, so the title and buttons sit under it rather than over it. */
+  /* On a phone the picture is small, so the title and buttons sit under it rather than over it. Only the picture
+     wears the surface and the loading shimmer; the copy under it sits on the sheet itself, with no seam. */
   .detail-art{aspect-ratio:auto;padding-top:56.25%}
+  .detail-art,.detail-art:not(.is-ready){background:none;animation:none}
+  .detail-art::before{content:"";position:absolute;inset:0 0 auto;aspect-ratio:16/9;background:var(--surface)}
+  .detail-art:not(.is-ready)::before{background:linear-gradient(110deg,rgba(255,255,255,.04) 28%,rgba(255,255,255,.1) 46%,rgba(255,255,255,.04) 64%) 0 0/240% 100%;animation:shimmer 1.3s linear infinite}
   .detail-poster,.detail-video,.detail-shade{bottom:auto;height:auto;aspect-ratio:16/9}
   .detail-shade{background:linear-gradient(transparent 55%,rgb(20,22,29))}
   .detail-hero{position:relative;inset:auto;padding:14px 16px 0}
@@ -170,7 +174,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 }
 
 /* New & Hot: films that move while you scroll */
-.hot-title{font-size:28px;padding:0 20px 14px}
+.hot-title{font-size:28px;padding:6px 20px 14px}
 .hot-feed{display:grid;gap:24px}
 .hot-item{position:relative}
 .hot-stage{position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--surface)}
@@ -192,7 +196,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 .hot-rail i.on{height:20px;background:#fff}
 .hot-rail-count{margin-top:4px;font-size:10px;font-weight:600;line-height:1;color:#e0e0e0;font-variant-numeric:tabular-nums;writing-mode:vertical-rl}
 @media(min-width:900px){
-  .hot-title{padding-inline:4%;font-size:36px}
+  .hot-title{padding:14px 4% 16px;font-size:36px}
   .hot-feed{gap:28px}
   .hot-stage{aspect-ratio:auto;height:min(56.25vw,84vh)}
   .hot-shade{background:linear-gradient(0deg,rgba(5,6,10,.9),transparent 60%),linear-gradient(90deg,rgba(5,6,10,.7),transparent 55%)}
@@ -219,6 +223,10 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 /* Tab changes crossfade for 250 ms (the browser's view transition) */
 @media(prefers-reduced-motion:no-preference){
   ::view-transition-old(root),::view-transition-new(root){animation-duration:.25s;animation-timing-function:ease}
+  /* The bars stay put while the page crossfades; their own pill and highlight transitions carry the change, so
+     the old bar is never ghosted over the new one. */
+  ::view-transition-old(topbar),::view-transition-old(tabbar){display:none}
+  ::view-transition-new(topbar),::view-transition-new(tabbar){animation:none}
   .tab-in{animation:tab-in .25s ease}
   @keyframes tab-in{from{opacity:0}}
   .billboard-poster{animation:drift 26s ease-in-out infinite alternate}

@@ -243,11 +243,11 @@ try {
         await new Promise(resolve => setTimeout(resolve, 500));
         await route.continue().catch(() => {});
       });
-      await page.getByRole('button', { name: 'Save to phone', exact: true }).click();
+      await page.getByRole('button', { name: desktop ? 'Download' : 'Save to phone', exact: true }).click();
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page.locator('#film-detail[open]').waitFor();
       await page.unroute('**/demo/*.mp4');
-      await page.getByRole('button', { name: 'Save to phone', exact: true }).click();
+      await page.getByRole('button', { name: desktop ? 'Download' : 'Save to phone', exact: true }).click();
       await page.getByRole('button', { name: 'Download video', exact: true }).waitFor();
       await shot(page, `save-ready${suffix}`);
       const downloading = page.waitForEvent('download');

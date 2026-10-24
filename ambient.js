@@ -1,18 +1,57 @@
 // Each film lights the page behind it, like a screen in a dark room. Its poster is shrunk to a few pixels on a
 // canvas and laid under the page (styles.css, .library::before) as a soft wash of its colours: a tiny image costs
-// nothing to scale or blur, even on a phone. The billboard lights the home; in New & Hot the playing film does.
+// nothing to scale or blur, even on a phone. The billboard lights the home; in New & Hot the playing film does;
+// in a grid (search, filters, Explore all, My List) the first result does.
 const W = 48, H = 27;
 let canvas;
 
-export function wash(img) {
-  if (!img?.complete || !img.naturalWidth) return '';
+// The poster drawn small (cover, like the poster itself), or null while it has not loaded.
+function draw(img) {
+  if (!img?.complete || !img.naturalWidth) return null;
   canvas ||= Object.assign(document.createElement('canvas'), { width: W, height: H });
-  const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight); // cover, like the poster itself
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
   const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+  return ctx;
+}
+
+// Mean brightness and colourfulness (0 to 1) of RGBA pixels; colourfulness is the spread between a pixel's strongest
+// and weakest channel.
+export function tone(data) {
+  let light = 0, chroma = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    light += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    chroma += Math.max(r, g, b) - Math.min(r, g, b);
+  }
+  const n = data.length / 4 * 255;
+  return { light: light / n, chroma: chroma / n };
+}
+
+// A pale poster would fog the page grey, so its wash is dimmed until its brightness is at most 0.3 to 0.5: the more
+// colourful the poster, the more light it may give. Colourful and dark films pass as they are. Returns how much black
+// to lay over the wash (0 to 1).
+export function dimFor(data) {
+  const { light, chroma } = tone(data), cap = 0.3 + 0.2 * chroma;
+  return light > cap ? 1 - cap / light : 0;
+}
+
+// How pale a poster is: 0 for colourful or dark art (brightness up to 0.5), 1 for a white page (0.8 and up). The
+// billboard, New & Hot and the details deepen the shade under their white type by this much (styles.css, --pale).
+export const paleFor = data => Math.min(1, Math.max(0, (tone(data).light - 0.5) / 0.3));
+export function paleness(img) {
+  try { const ctx = draw(img); return ctx ? paleFor(ctx.getImageData(0, 0, W, H).data) : 0; }
+  catch { return 0; }
+}
+
+export function wash(img) {
   try {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
-    ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+    const ctx = draw(img);
+    if (!ctx) return '';
+    const dim = dimFor(ctx.getImageData(0, 0, W, H).data);
+    if (dim) { ctx.fillStyle = `rgba(0,0,0,${dim.toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
     return canvas.toDataURL('image/png');
   } catch { return ''; } // never expected: posters are same-origin blobs, so the canvas stays readable
 }
@@ -20,7 +59,7 @@ export function wash(img) {
 export function mountAmbient(root, target = document.documentElement) {
   let lit = null;
   function paint() {
-    const img = root.querySelector('.hot-item.is-active .hot-poster') || root.querySelector('.billboard-poster') || root.querySelector('.hot-poster');
+    const img = root.querySelector('.hot-item.is-active .hot-poster') || root.querySelector('.billboard-poster') || root.querySelector('.hot-poster') || root.querySelector('.results-grid .poster');
     if (img && img === lit) return;
     const url = wash(img);
     lit = url ? img : null;

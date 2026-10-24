@@ -795,9 +795,9 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v5'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js']) assert.ok(cached['mkc-shell-v5'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v5'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v6'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js']) assert.ok(cached['mkc-shell-v6'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v6'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await context.close();
   });
 } finally {

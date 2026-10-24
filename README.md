@@ -2,7 +2,7 @@
 
 A private film player for one owner. Plain HTML, CSS, and ES modules. No build step, runtime packages, CDN, analytics, or third-party scripts. The home has tabs, a billboard that plays a muted preview, side-scroll film rows, search, and filters.
 
-The look is **Liquid Glass**: Netflix's layout in Apple TV calm. The page is ink black (#05060a) lit by the film on show: `ambient.js` shrinks the billboard poster (or, in New & Hot, the playing film's) to a 48 × 27 canvas and lays it under the page as a soft wash of its colours. Controls that float over film are frosted capsules; the one action that matters is a white pill. Titles read as a brand line over a clean name: `splitTitle` in `catalog.js` turns "North Studio — Night Swim (film)" into "NORTH STUDIO" over "Night Swim", and keeps only the bracket notes that add something ("app 0.7.3"). Without backdrop blur, or with "Reduce transparency" on, the same controls sit on solid ink.
+The look is **Liquid Glass**: Netflix's layout in Apple TV calm. The page is ink black (#05060a) lit by the film on show: `ambient.js` shrinks the billboard poster (in New & Hot, the playing film's; in a grid, the first result's) to a 48 × 27 canvas and lays it under the page as a soft wash of its colours. Controls that float over film are frosted capsules; the one action that matters is a white pill. Titles read as a brand line over a clean name: `splitTitle` in `catalog.js` turns "North Studio — Night Swim (film)" into "NORTH STUDIO" over "Night Swim", and keeps only the bracket notes that add something ("app 0.7.3"). Without backdrop blur, or with "Reduce transparency" on, the same controls sit on solid ink.
 
 This repo holds **no private film data**: no real catalog, titles, posters, videos, or token. `demo/` holds eight made-up entries grouped into seven titles, original sample art, and one 12-second clip per film and shape. `shots/` is local review evidence and is ignored by Git.
 
@@ -38,7 +38,7 @@ Settings → **Forget token** removes the stored token and cached private poster
 
 Choose a card or **More info** to open its detail sheet. Pick a cut, then Phone or Desktop when both exist. The sheet also shows the date added, a release link when supplied, and films with the same product. Play starts the existing full-frame player, with play/pause, seek, mute, and full-screen controls. Arabic titles use `dir="auto"` and a local Arabic font.
 
-Search and chips open a grid with a title count. Clear filters returns to the home. Rows show Continue watching, New this week (the last seven days), each product, Ads & loops, Demos, and Arabic. Empty rows are hidden. **Explore all** beside a row title opens that row as a grid.
+Search and chips open a grid with a title count. Clear filters returns to the home. Rows show Continue watching, New this week (the last seven days), each product, Ads & loops, Demos, and Arabic. Empty rows are hidden. **Explore all** in a row's heading opens that row as a grid.
 
 ### Tabs
 
@@ -60,7 +60,7 @@ Watch progress is saved per original film id in `mkc.progress`. It contains only
 
 Optional catalog fields are `product`, `kind`, `lang`, `group`, `variant`, and `blurb`. Old catalogs still work. Only entries with an explicit shared `group` collapse. The newest cut is the main card; ties prefer more picture versions, then Desktop, then original catalog order. Filters and search inspect every cut and show the matching cut. Real group decisions belong only in the private catalog repo.
 
-**Save to phone** downloads the selected file into memory. Progress uses Content-Length when available; otherwise it shows received MB. **Cancel** stops the fetch. Once ready, tap **Save video** to open the device share sheet, then choose **Save Video** on iPhone. This second tap preserves the user gesture required by Web Share. When file sharing is not available, **Download video** uses the browser download function. A cancelled share can be tried again without another download.
+**Save to phone** (**Download** on a desktop) downloads the selected file into memory. Progress uses Content-Length when available; otherwise it shows received MB. **Cancel** stops the fetch. Once ready, tap **Save video** to open the device share sheet, then choose **Save Video** on iPhone. This second tap preserves the user gesture required by Web Share. When file sharing is not available, **Download video** uses the browser download function. A cancelled share can be tried again without another download.
 
 “Saved” means the file was handed to the device. The app cannot prove that it is in Photos. Large films need enough free memory on the phone.
 

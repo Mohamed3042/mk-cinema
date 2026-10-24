@@ -7,7 +7,7 @@ import { mountRows } from './rows.js';
 import { mountFeed } from './feed.js';
 import { createBob } from './bob.js';
 import { openSheet, closeSheet, enableDrag } from './modal.js';
-import { mountAmbient } from './ambient.js';
+import { mountAmbient, paleness } from './ambient.js';
 
 const main = document.querySelector('main');
 const topbar = document.querySelector('#topbar');
@@ -49,17 +49,18 @@ const iconPaths = {
   sound: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 8a6 6 0 0 1 0 8M19 4a11 11 0 0 1 0 16"/>',
   expand: '<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/>', arrow: '<path d="m9 5 7 7-7 7"/>', alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/>',
   home: '<path d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M10 20v-5h4v5"/>', flame: '<path d="M12 3c.4 3 3.2 4.6 4.4 7A6.5 6.5 0 1 1 5.6 14c0-1.9.8-3.4 2-4.5.3 1.3.9 2 1.9 2.4C9.4 8.7 10.2 5.4 12 3Z"/>',
-  list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>'
+  list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>',
+  film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconPaths[name] || ''}</svg>`;
 const title = (f, tag = 'h2', cls = '') => `<${tag} dir="auto" class="film-title ${cls}">${escape(splitTitle(f.title).name)}</${tag}>`;
 // The brand line above a title: the part before "—", else the product, else the kind ("More films" says nothing).
 const kicker = f => splitTitle(f.title).kicker || (f.product && f.product !== 'More films' ? f.product : kindLabel(f.kind));
 const cuts = f => [...new Set(f.versions.map(v => v.kind))].map(kindName).join(' + ');
-// Meta line under a title: NEW, length, kind, then whatever the title and product add.
+// Meta line under a title: NEW, length, kind, then whatever the title and product add ("More films" adds nothing).
 function metaLine(f, { product = false } = {}) {
   const { kicker: brand, notes } = splitTitle(f.title);
-  const items = [duration(f.seconds), kindLabel(f.kind), ...(product && f.product && f.product !== brand ? [f.product] : []), ...(f.lang === 'ar' ? ['Arabic'] : []), ...notes];
+  const items = [duration(f.seconds), kindLabel(f.kind), ...(product && f.product && f.product !== brand && f.product !== 'More films' ? [f.product] : []), ...(f.lang === 'ar' ? ['Arabic'] : []), ...notes];
   return `${isNew(f) ? '<span class="new-badge">NEW</span>' : ''}${items.map(item => `<span>${escape(item)}</span>`).join('')}`;
 }
 const badges = f => `<div class="badges">${f.versions.map(v => `<span class="badge">${icon(v.kind)}${kindName(v.kind)}</span>`).join('')}</div>`;
@@ -150,13 +151,21 @@ function chrome() {
   for (const button of document.querySelectorAll('[data-nav]')) {
     if (button.dataset.nav === current) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   }
-  const on = topbar.querySelector('.tab[aria-current]'), ink = topbar.querySelector('.tab-ink');
-  if (ink) {
-    ink.classList.toggle('off', !on);
-    if (on) { ink.style.setProperty('--x', `${on.offsetLeft}px`); ink.style.setProperty('--w', `${on.offsetWidth}px`); }
-  }
+  placeInk();
   paintBar();
 }
+// The white pill under the open tab slides on a tab change. Its first placement, and the correction once the web
+// font has landed and the tabs change width, are instant: the pill never grows out of the bar's left edge.
+function placeInk(instant = false) {
+  const on = topbar.querySelector('.tab[aria-current]'), ink = topbar.querySelector('.tab-ink');
+  if (!ink) return;
+  ink.classList.toggle('off', !on);
+  if (!on || !on.offsetWidth) return;
+  if (instant || !ink.style.getPropertyValue('--w')) ink.style.transition = 'none';
+  ink.style.setProperty('--x', `${on.offsetLeft}px`); ink.style.setProperty('--w', `${on.offsetWidth}px`);
+  if (ink.style.transition) { void ink.offsetWidth; ink.style.transition = ''; }
+}
+document.fonts?.addEventListener?.('loadingdone', () => placeInk(true));
 // Transparent over the hero, solid #141414 after 80 px of scroll.
 function paintBar() { topbar.style.setProperty('--bar', Math.min(1, scrollY / 80).toFixed(3)); }
 addEventListener('scroll', paintBar, { passive: true });
@@ -199,8 +208,12 @@ function mount(next, html, { focus = true } = {}) {
   window.scrollTo(0, 0);
   void fillPosters(revision);
 }
-// A poster fades in over the skeleton shimmer once it has loaded.
-function markReady(img) { img.classList.add('is-ready'); img.parentElement.classList.add('is-ready'); }
+// A poster fades in over the skeleton shimmer once it has loaded. Under the copy of the billboard, New & Hot and the
+// details, a pale poster also deepens the shade so the white type stays readable.
+function markReady(img) {
+  img.classList.add('is-ready'); img.parentElement.classList.add('is-ready');
+  if (img.matches('.billboard-poster, .hot-poster, .detail-poster')) img.parentElement.style.setProperty('--pale', paleness(img).toFixed(2));
+}
 main.addEventListener('load', event => { if (event.target.matches?.('img.poster')) markReady(event.target); }, true);
 async function fillPosters(stamp) {
   if (!catalog) return;
@@ -291,14 +304,14 @@ function feedView(all) {
 }
 function listView(all, progress) {
   const items = listGroups(all, listIds);
-  return `<section class="results list-view" aria-label="My List"><div class="results-head"><div><h1>My List</h1><p class="results-count" role="status">${items.length} ${items.length === 1 ? 'title' : 'titles'}</p></div></div>${items.length ? `<div class="results-grid">${items.map(f => card(f, progress)).join('')}</div>` : `<div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Your list is empty</h2><p>Tap + on any film to keep it here.</p><button class="secondary" data-tab="home">Browse films</button></div>`}</section><footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
+  return `<section class="results list-view" aria-label="My List"><div class="results-head"><div><h1>My List</h1><p class="results-count" role="status">${items.length} ${items.length === 1 ? 'title' : 'titles'}</p></div></div>${items.length ? `<div class="results-grid">${items.map(f => card(f, progress)).join('')}</div>` : `<div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Your list is empty</h2><p>Add films with + to keep them here.</p><button class="secondary" data-tab="home">Browse films</button></div>`}</section><footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
 }
 function card(f, progress = {}) {
   const id = f.resumeFilmId || f.id, saved = progress[id], { kicker: brand, name } = splitTitle(f.title);
   return `<article class="card"><button class="film-card" data-film="${escape(id)}" aria-label="More info: ${escape(f.title)}">${poster(f)}<span class="card-title film-title" dir="auto">${brand ? `<small class="card-kicker">${escape(brand)}</small>` : ''}${escape(name)}</span>${f.variants.length > 1 ? `<span class="cut-count">${f.variants.length} cuts</span>` : ''}</button>${f.resumeFilmId && saved ? `<progress class="watch-progress" value="${saved.time}" max="${saved.duration}" aria-label="Watch progress for ${escape(f.title)}"></progress>` : ''}</article>`;
 }
 function shelf(name, films, progress = {}) {
-  return films.length ? `<section class="shelf" aria-label="${escape(name)}" data-row="${escape(name)}"><div class="shelf-heading"><h2>${escape(name)}</h2><button class="explore" data-action="explore" data-row="${escape(name)}" aria-label="Explore all: ${escape(name)}"><span>Explore all</span>${icon('arrow')}</button><span class="shelf-count">${films.length} ${films.length === 1 ? 'title' : 'titles'}</span><span class="row-dashes" aria-hidden="true"></span></div><div class="row-viewport"><div class="card-track">${films.map(f => card(f, progress)).join('')}</div><button class="paddle paddle-prev" aria-label="Previous titles: ${escape(name)}" disabled>${icon('back')}</button><button class="paddle paddle-next" aria-label="Next titles: ${escape(name)}">${icon('arrow')}</button></div></section>` : '';
+  return films.length ? `<section class="shelf" aria-label="${escape(name)}" data-row="${escape(name)}"><div class="shelf-heading"><h2>${escape(name)}</h2><span class="shelf-count">${films.length} ${films.length === 1 ? 'title' : 'titles'}</span><button class="explore" data-action="explore" data-row="${escape(name)}" aria-label="Explore all: ${escape(name)}"><span>Explore all</span>${icon('arrow')}</button><span class="row-dashes" aria-hidden="true"></span></div><div class="row-viewport"><div class="card-track">${films.map(f => card(f, progress)).join('')}</div><button class="paddle paddle-prev" aria-label="Previous titles: ${escape(name)}" disabled>${icon('back')}</button><button class="paddle paddle-next" aria-label="Next titles: ${escape(name)}">${icon('arrow')}</button></div></section>` : '';
 }
 function chooseFilm(id, directPlay = false, origin) {
   if (screen !== 'film') { detailOpener = origin instanceof Element ? origin : document.activeElement; detailOrigin = { el: origin instanceof Element ? origin : null, id }; }
@@ -320,7 +333,7 @@ function filmPage(origin) {
   let release = '';
   try { const url = new URL(film.release); if (url.protocol === 'https:') release = `<a class="release-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">View release ${icon('arrow')}</a>`; } catch { /* Old catalogs can omit a release link. */ }
   const cuts = group.variants.length > 1 ? `<section class="episodes" aria-label="Cuts"><h2>Cuts</h2><div class="episode-list" role="group" aria-label="Film cut"><ol>${group.variants.map((v, index) => `<li><button class="episode variant ${v.id === film.id ? 'selected' : ''}" data-variant="${escape(v.id)}" aria-pressed="${v.id === film.id}"><span class="ep-n">${index + 1}</span>${poster(v, 'ep-poster')}<span class="ep-copy"><strong dir="auto">${escape(v.variant || v.title)}</strong><small>${duration(v.seconds)} · ${escape(v.added || 'Date unavailable')}</small></span>${v.id === film.id ? `<span class="ep-check">${icon('check')}</span>` : ''}</button></li>`).join('')}</ol></div></section>` : '';
-  const html = `<button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><span class="sheet-handle" aria-hidden="true"></span><div class="detail-art">${poster(film, 'detail-poster')}<video class="detail-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="detail-shade"></div><div class="detail-hero"><p class="kicker" dir="auto">${escape(kicker(selected))}</p><h1 id="detail-title" class="film-title" dir="auto">${escape(splitTitle(film.title).name)}</h1><div class="detail-buttons"><button class="primary detail-play" data-action="play">${icon('play')}Play</button>${listButton(film, 'detail-list')}<button class="icon-button round detail-mute" data-action="detail-mute" aria-label="Unmute" hidden>${icon('mute')}</button></div></div></div><div class="detail-body"><p class="detail-meta">${metaLine(selected, { product: true })}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="secondary" data-action="save">${icon('download')}Save to phone</button></div>${cuts}${versionList()}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${related.length ? `<section class="shelf more-like" aria-label="More like this"><div class="shelf-heading"><h2>More like this</h2></div><div class="more-grid">${related.map(f => card(f)).join('')}</div></section>` : ''}</div>`;
+  const html = `<button class="icon-button detail-close" data-action="close-detail" aria-label="Close details">${icon('close')}</button><span class="sheet-handle" aria-hidden="true"></span><div class="detail-art">${poster(film, 'detail-poster')}<video class="detail-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="detail-shade"></div><div class="detail-hero"><p class="kicker" dir="auto">${escape(kicker(selected))}</p><h1 id="detail-title" class="film-title" dir="auto">${escape(splitTitle(film.title).name)}</h1><div class="detail-buttons"><button class="primary detail-play" data-action="play">${icon('play')}Play</button>${listButton(film, 'detail-list')}<button class="icon-button round detail-mute" data-action="detail-mute" aria-label="Unmute" hidden>${icon('mute')}</button></div></div></div><div class="detail-body"><p class="detail-meta">${metaLine(selected, { product: true })}</p><p class="detail-blurb">${escape(selected.blurb)}</p><div class="film-actions"><button class="secondary" data-action="save">${icon('download')}${desktopQuery.matches ? 'Download' : 'Save to phone'}</button></div>${cuts}${versionList()}<p class="date-added">Added <time>${escape(film.added || 'Date unavailable')}</time></p>${release}${related.length ? `<section class="shelf more-like" aria-label="More like this"><div class="shelf-heading"><h2>More like this</h2></div><div class="more-grid">${related.map(f => card(f)).join('')}</div></section>` : ''}</div>`;
   let detail = main.querySelector('#film-detail'), settled = Promise.resolve();
   if (detail) { live.modal?.stop(); detail.innerHTML = html; detail.scrollTop = 0; }
   else {
@@ -384,7 +397,7 @@ function persistPlayback() {
 const messages = {
   offline: ['You’re offline', 'Connect to the internet.<br>Then try your library again.', 'offline'],
   'github-unreachable': ['GitHub is unavailable', 'Your library could not load.<br>Try again in a moment.', 'cloud'],
-  empty: ['No films yet', 'Add films to your media repository,<br>then refresh.', ''],
+  empty: ['No films yet', 'Add films to your media repository,<br>then refresh.', 'film'],
   access: ["This token can't see the media repo", 'Select mk-cinema-library in the token settings.<br>Give Contents: Read-only access.', 'alert'],
   'rate-limit': ['GitHub needs a pause', 'The request limit was reached.<br>Wait a few minutes, then retry.', 'cloud'],
   invalid: ['This file could not open', 'Check the catalog and media files,<br>then try again.', 'alert']
@@ -455,10 +468,10 @@ function updatePlayButton() {
 function saveScreen(state, preview = false) {
   screen=state;
   let panel;
-  if(state==='save-progress') panel=`<h2>Saving to phone</h2><p id="percent" class="percent">${preview?'64%':'0%'}</p><progress max="100" value="${preview?64:0}" aria-label="Download progress"></progress><p id="download-note">Downloading the ${kindName(version.kind)} version.</p><button class="secondary" data-action="cancel-save">Cancel</button>`;
+  if(state==='save-progress') panel=`<h2>${desktopQuery.matches?'Downloading':'Saving to phone'}</h2><p id="percent" class="percent">${preview?'64%':'0%'}</p><progress max="100" value="${preview?64:0}" aria-label="Download progress"></progress><p id="download-note">Downloading the ${kindName(version.kind)} version.</p><button class="secondary" data-action="cancel-save">Cancel</button>`;
   else if(state==='save-ready') panel=`<div class="success-icon">${icon('download')}</div><h2>Ready to save</h2><p>The download is complete.<br>Choose where to keep your video.</p><button class="primary" data-action="deliver-file">${icon('download')}${canShareFile()?'Save video':'Download video'}</button><button class="text-button" data-action="back">Back to film</button><p id="save-note" role="status"></p>`;
   else panel=`<div class="success-icon">${icon('check')}</div><h2>Saved</h2><p>${preview?'The download is complete.':'The video was handed to your device.<br>Check your chosen save location.'}</p><button class="primary" data-action="back">${icon('play')}Back to film</button>`;
-  mount(state, `${header(true)}<div class="save-film">${poster(film,'save-poster')}${title(film,'h1')}<p class="runtime">${duration(film.seconds)}</p><div class="save-version badge">${icon(version.kind)}${kindName(version.kind)} ${version.kind==='phone'?'9:16':'16:9'}</div></div><section class="save-panel" aria-live="polite">${panel}</section>`);
+  mount(state, `${header(true)}<div class="save-film">${poster(film,film.posterShape==='9:16'?'save-poster tall':'save-poster')}${title(film,'h1')}<p class="runtime">${duration(film.seconds)}</p><div class="save-version badge">${icon(version.kind)}${kindName(version.kind)} ${version.kind==='phone'?'9:16':'16:9'}</div></div><section class="save-panel" aria-live="polite">${panel}</section>`);
 }
 async function save() {
   savedFile=undefined; saveScreen('save-progress');

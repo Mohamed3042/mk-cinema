@@ -143,3 +143,21 @@ test('the Films tab keeps films, teasers and reels, and leaves ads, loops and de
   const groups = groupFilms([film('f', { kind: 'film' }), film('t', { kind: 'teaser' }), film('r', { kind: 'reel' }), film('a', { kind: 'ad' }), film('l', { kind: 'loop' }), film('d', { kind: 'demo' })]);
   assert.deepEqual(filterFilms(groups, 'Films').map(item => item.id).sort(), ['f', 'r', 't']);
 });
+
+test('film light: pale posters are dimmed so they glow instead of fogging the page; colourful ones pass', async () => {
+  const { dimFor } = await import('../ambient.js');
+  const fill = (r, g, b) => Uint8ClampedArray.from({ length: 48 * 27 * 4 }, (_, i) => [r, g, b, 255][i % 4]);
+  assert.equal(dimFor(fill(233, 64, 45)), 0, 'a red poster keeps all its light');
+  assert.equal(dimFor(fill(12, 14, 20)), 0, 'a dark poster keeps all its light');
+  assert.ok(Math.abs(dimFor(fill(255, 255, 255)) - 0.7) < 0.01, 'a white poster gives 30 % of its light');
+  assert.ok(Math.abs(dimFor(fill(153, 153, 153)) - 0.5) < 0.01, 'a grey poster is capped at the same brightness');
+});
+
+test('film light: the shade under white type deepens only over pale posters', async () => {
+  const { paleFor } = await import('../ambient.js');
+  const fill = (r, g, b) => Uint8ClampedArray.from({ length: 48 * 27 * 4 }, (_, i) => [r, g, b, 255][i % 4]);
+  assert.equal(paleFor(fill(233, 64, 45)), 0, 'a red poster keeps the light shade');
+  assert.equal(paleFor(fill(20, 22, 29)), 0, 'a dark poster keeps the light shade');
+  assert.equal(paleFor(fill(250, 250, 250)), 1, 'a white poster gets the full shade');
+  assert.ok(Math.abs(paleFor(fill(166, 166, 166)) - 0.5) < 0.02, 'in between, in between');
+});
