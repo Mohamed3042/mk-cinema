@@ -15,6 +15,9 @@ export function onViewChange(callback) { listeners.push(callback); return () => 
 
 function changed() { for (const callback of listeners) callback(); }
 export function watchViewport() {
+  // Set once, never toggled: styles.css keeps an iPhone home-screen app's page 1 px taller than its window, the
+  // only way iOS gives such an app the whole screen on pages that fit (Reels, the player).
+  if (standalone()) document.documentElement.classList.add('ios-app');
   addEventListener('resize', changed);
   addEventListener('orientationchange', () => { changed(); setTimeout(changed, 300); }); // iOS settles the new size late
   globalThis.visualViewport?.addEventListener('resize', changed);

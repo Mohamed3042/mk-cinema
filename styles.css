@@ -253,4 +253,7 @@ main.player{position:fixed;inset:0;z-index:30;max-width:none;min-height:0;margin
 /* Reels and the player never lock the page (no overflow:hidden on html/body): an iPhone home-screen app
    shrinks its window by the status bar while the page is locked, leaving a black band at the bottom. */
 html{background:#000}
+/* An iPhone home-screen app gets the whole screen only while the page is taller than its window; a page that fits
+   (Reels, the player) loses the status bar's height at the bottom. viewport.js sets .ios-app once; never toggled. */
+html.ios-app body{min-height:calc(100lvh + 1px)}
 body:has(section.reel){background:#000}

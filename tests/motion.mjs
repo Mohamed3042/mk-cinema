@@ -1087,11 +1087,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v11'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v11'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v11'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v12'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v12'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v12'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
-    assert.equal(await page.locator('#shell-version').innerText(), 'v11 · saved for offline', 'Settings → About names the shell this browser holds');
+    assert.equal(await page.locator('#shell-version').innerText(), 'v12 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 
@@ -1414,18 +1414,22 @@ try {
   });
   const edges = (page, selector) => page.locator(selector).first().evaluate(el => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) }; });
 
-  // An iPhone home-screen app shrinks its window by the status bar while the page's scrolling is locked (body
-  // overflow:hidden): Reels and the player then stopped above a black band, and stretching them made the tab bar jump
-  // (owner's iPhone, 2026-10-24). These screens cover everything anyway, so they never lock the page.
+  // An iPhone home-screen app (black-translucent) gets the whole screen only while the page is taller than its window;
+  // a page that fits (Reels, the player) loses the status bar's height at the bottom: a black band, and an earlier
+  // stretch that toggled the page's height made the tab bar jump (owner's iPhone 2026-10-24: window 956 on Settings,
+  // tab bar 62 pt higher on Reels = safe-area top 62). So on iPhone the page is always 1 px taller than the window,
+  // a constant that never toggles, and these screens never lock the page either.
   await record('iPhone: Reels and the player never lock the page, cover the window and hold the tab bar still', async () => {
     const { context, page } = await session({ viewport: PHONE, phone: true });
     await homeScreenApp(context);
     await loaded(page);
     const locked = () => page.evaluate(() => [document.documentElement, document.body].some(el => ['overflow', 'overflowY'].some(p => getComputedStyle(el)[p] === 'hidden')));
+    const taller = () => page.evaluate(() => document.documentElement.scrollHeight > innerHeight);
     const home = await edges(page, '#tabbar');
     await page.locator('#tabbar').getByRole('button', { name: 'Reels' }).tap();
     await page.locator('section.reel .reel-item').first().waitFor();
     assert.equal(await locked(), false, 'Reels leaves the page unlocked');
+    assert.equal(await taller(), true, 'on Reels the page is still taller than the window');
     assert.deepEqual(await edges(page, 'section.reel'), { top: 0, bottom: PHONE.height, left: 0, right: PHONE.width }, 'the reel covers the window');
     const reels = await edges(page, '#tabbar');
     assert.deepEqual(reels, home, 'the tab bar sits exactly where it does on Home');
@@ -1437,7 +1441,17 @@ try {
     await page.locator('main.library').waitFor();
     await openPlayer(page, 'Phone 9:16');
     assert.equal(await locked(), false, 'the player leaves the page unlocked');
+    assert.equal(await taller(), true, 'in the player the page is still taller than the window');
     assert.deepEqual(await edges(page, 'main.player'), { top: 0, bottom: PHONE.height, left: 0, right: PHONE.width }, 'the player covers the window');
+    await context.close();
+  });
+
+  await record('iPhone trick stays on iPhone: a browser tab gets no extra pixel of scroll on Reels or in the player', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await loaded(page);
+    await page.locator('#tabbar').getByRole('button', { name: 'Reels' }).tap();
+    await page.locator('section.reel .reel-item').first().waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight), false, 'Reels in a browser tab does not scroll');
     await context.close();
   });
 } finally {
