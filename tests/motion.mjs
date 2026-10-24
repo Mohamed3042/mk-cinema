@@ -943,6 +943,57 @@ try {
     }
   });
 
+  await record('Reels on an iPhone: a film with a 16:9 poster plays its phone cut from the start, through a broken link, a whole-film download and the next round', async () => {
+    // Shaped like the library's MK Sheep: a 16:9 poster, the phone cut listed first. It is the newest, so it opens the reel.
+    const sheep = { id: 'sheep-test', title: 'Sheep test', kind: 'film', lang: 'en', dir: 'ltr', posterShape: '16:9', seconds: 12, added: '2026-10-23', poster: 'demo/posters/amber-room.jpg', product: 'MK Suite & apps', group: null,
+      versions: catalog.films.find(f => f.id === 'amber-room').versions.map(v => ({ ...v })) };
+    const mock = { ...catalog, films: [sheep, ...catalog.films] };
+    for (const iphone of [true, false]) {
+      const { context, page } = await session({ viewport: PHONE, phone: true });
+      const fetched = [];
+      await page.route('https://api.github.com/**', async route => {
+        const request = route.request(), path = decodeURIComponent(new URL(request.url()).pathname.split('/contents/')[1]);
+        const headers = { 'access-control-allow-origin': '*' };
+        if (path === 'cinema.json') return route.fulfill({ json: mock, headers });
+        if (request.headers().accept === 'application/vnd.github.object') return route.fulfill({ json: { download_url: `https://raw.githubusercontent.com/demo/mk-cinema/${path}?token=synthetic` }, headers });
+        return route.fulfill({ body: await readFile(new URL(path, root)), contentType: 'image/jpeg', headers });
+      });
+      // Like iPhone Safari: the stream is refused, the whole film is downloaded. Otherwise the film streams.
+      await page.route('https://raw.githubusercontent.com/**', async route => {
+        if (iphone && route.request().resourceType() === 'media') return route.fulfill({ body: 'not a video', contentType: 'application/octet-stream' });
+        const path = new URL(route.request().url()).pathname.replace('/demo/mk-cinema/', '');
+        fetched.push(path);
+        return route.fulfill({ body: await readFile(new URL(path, root)), contentType: iphone ? 'application/octet-stream' : 'video/mp4', headers: { 'access-control-allow-origin': '*' } });
+      });
+      await page.goto(`${origin}/`);
+      await setPrefs(page, { reelOrder: 'newest', reelSound: false });
+      await page.reload();
+      await page.locator('main.connect').waitFor();
+      await page.getByLabel('GitHub token', { exact: true }).fill('synthetic-test-token');
+      await page.getByRole('button', { name: 'Connect', exact: true }).click();
+      await page.locator('main.library').waitFor();
+      await openReels(page, true);
+      await reelLive(page);
+      const shown = () => page.locator('.reel-item.is-active').evaluate(item => { const video = item.querySelector('.reel-video'); return { film: item.dataset.film, shape: item.dataset.shape, w: video?.videoWidth, h: video?.videoHeight, fit: video && getComputedStyle(video).objectFit }; });
+      const how = iphone ? 'downloaded whole' : 'streamed';
+      assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'cover' }, `${how}: the phone cut plays, filling the screen`);
+      assert.ok(fetched.length && fetched.every(path => path.endsWith('-phone.mp4')), `${how}: only phone cuts were fetched (${fetched.join(', ')})`);
+      if (!iphone) {
+        // The short-lived link breaks mid-film: one fresh link, and the same cut carries on where it was.
+        await page.locator('.reel-video').evaluate(video => { video.pause(); video.currentTime = 2; video.dispatchEvent(new Event('error')); });
+        await page.waitForFunction(() => { const v = document.querySelector('.reel-item.is-active .reel-video'); return v && !v.paused && v.currentTime >= 2 && v.videoWidth; });
+        assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'cover' }, 'after a broken link the phone cut carries on');
+      }
+      // The next round: every item of the new round keeps the phone cut.
+      await page.locator('.reel-track').evaluate(track => { const items = track.querySelectorAll('.reel-item'); track.scrollTop = items[items.length - 3].offsetTop; });
+      await page.waitForFunction(count => document.querySelectorAll('.reel-item').length > count, titleCount + 1);
+      const shapes = await page.locator('.reel-item[data-film=sheep-test]').evaluateAll(items => items.map(item => item.dataset.shape));
+      assert.deepEqual(shapes, ['phone', 'phone'], 'the next round plays the phone cut too');
+      assert.ok(fetched.every(path => path.endsWith('-phone.mp4')), `${how}: still only phone cuts (${fetched.join(', ')})`);
+      await context.close();
+    }
+  });
+
   await record('Reels with reduced motion: a film that ends waits instead of moving on', async () => {
     const { context, page } = await session({ reduced: true });
     await loaded(page);
