@@ -13,7 +13,7 @@ import { mountPlayer } from './player.js';
 import { watchViewport, diagnostics } from './viewport.js';
 import { KINDS, readSettings, writeSettings, toggleKind, reelKinds, reelDeck, nextRound } from './settings.js';
 
-watchViewport(); // before any screen draws: Reels and the player need the real screen height on iPhone
+watchViewport(); // the player follows window changes (rotation, toolbars)
 const main = document.querySelector('main');
 const topbar = document.querySelector('#topbar');
 const tabbar = document.querySelector('#tabbar');

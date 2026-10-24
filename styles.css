@@ -181,7 +181,7 @@ progress::-moz-progress-bar{background:#fff}
 /* The player (player.js): the film is the only light, edge to edge, and the controls float over it. A landscape cut
    on a phone held upright is turned 90° clockwise, so the frame's own top, right, bottom and left lie along the
    screen's right, bottom, left and top: its safe-area insets turn with it. */
-body.on-player{overflow:hidden;overscroll-behavior:none;background:#000}
+body.on-player{overscroll-behavior:none;background:#000}
 main.player{position:fixed;inset:0;z-index:30;max-width:none;min-height:0;margin:0;padding:0;background:#000;overflow:hidden}
 .np{--vw:100vw;--vh:100vh;--sa-t:env(safe-area-inset-top,0px);--sa-r:env(safe-area-inset-right,0px);--sa-b:env(safe-area-inset-bottom,0px);--sa-l:env(safe-area-inset-left,0px);position:absolute;left:0;top:0;width:var(--vw);height:var(--vh);overflow:hidden;isolation:isolate;background:#000;color:#fff;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .np[data-rotated]{width:var(--vh);height:var(--vw);transform-origin:0 0;transform:translateX(var(--vw)) rotate(90deg);--sa-t:env(safe-area-inset-right,0px);--sa-r:env(safe-area-inset-bottom,0px);--sa-b:env(safe-area-inset-left,0px);--sa-l:env(safe-area-inset-top,0px)}
@@ -250,11 +250,7 @@ main.player{position:fixed;inset:0;z-index:30;max-width:none;min-height:0;margin
 .np .player-status:empty{display:none}
 @media(min-width:900px){.np-ui{padding:max(26px,var(--sa-t)) max(40px,var(--sa-r)) max(28px,var(--sa-b)) max(40px,var(--sa-l))}.np .np-name{font-size:22px}.np-kicker{font-size:12px}.np-play{width:90px;height:90px}.np-play svg{width:36px;height:36px}.np .np-skip{width:66px;height:66px}.np .np-skip svg{width:36px;height:36px}.np-time{font-size:14px}.np .player-status{top:calc(50% + 72px)}}
 
-/* iPhone home-screen apps whose window falls short of the screen (viewport.js sets --app-h on html): the
-   full-screen layers reach the real bottom, and the tab bar sits 10 pt plus the safe area above it. */
+/* Reels and the player never lock the page (no overflow:hidden on html/body): an iPhone home-screen app
+   shrinks its window by the status bar while the page is locked, leaving a black band at the bottom. */
 html{background:#000}
-html.app-h,html.app-h body{min-height:var(--app-h)}
-html.app-h main.player,html.app-h section.reel{bottom:auto;height:var(--app-h)}
-html.app-h .tabbar{top:calc(var(--app-h) - 10px - env(safe-area-inset-bottom));bottom:auto;transform:translateY(-100%)}
-@media(min-width:900px){html.app-h section.reel{height:calc(var(--app-h) - var(--bar-h) - env(safe-area-inset-top))}}
 body:has(section.reel){background:#000}

@@ -216,7 +216,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 .tab{white-space:nowrap}
 /* Seven tabs, search and settings in a bar under 1100 px: the tabs tighten so nothing is clipped. */
 @media(min-width:900px) and (max-width:1099px){.tabs{margin-inline-start:12px}.tab{padding:0 11px;font-size:13px}}
-body:has(.reel){overflow:hidden}
+body:has(.reel){overscroll-behavior:none}
 section.reel{--reel-clear:calc(84px + env(safe-area-inset-bottom));position:fixed;inset:0;z-index:20;overflow:hidden;background:#000;color:#fff}
 @media(min-width:900px){section.reel{--reel-clear:0px;top:calc(var(--bar-h) + env(safe-area-inset-top))}}
 .reel-track{height:100%;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y mandatory;scrollbar-width:none}

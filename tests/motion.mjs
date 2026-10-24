@@ -1087,11 +1087,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v10'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v10'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v10'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v11'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v11'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v11'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
-    assert.equal(await page.locator('#shell-version').innerText(), 'v10 · saved for offline', 'Settings → About names the shell this browser holds');
+    assert.equal(await page.locator('#shell-version').innerText(), 'v11 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 
@@ -1414,56 +1414,31 @@ try {
   });
   const edges = (page, selector) => page.locator(selector).first().evaluate(el => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) }; });
 
-  await record('Full height: on an iPhone home-screen app whose window is short of the screen, Reels, the tab bar and the player reach the real bottom', async () => {
-    const { context, page } = await session({ viewport: SHORT, phone: true });
+  // An iPhone home-screen app shrinks its window by the status bar while the page's scrolling is locked (body
+  // overflow:hidden): Reels and the player then stopped above a black band, and stretching them made the tab bar jump
+  // (owner's iPhone, 2026-10-24). These screens cover everything anyway, so they never lock the page.
+  await record('iPhone: Reels and the player never lock the page, cover the window and hold the tab bar still', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
     await homeScreenApp(context);
     await loaded(page);
-    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim()), '852px');
-    assert.equal((await edges(page, '#tabbar')).bottom, 852 - 10, 'Home: the tab bar sits 10 pt above the real bottom');
+    const locked = () => page.evaluate(() => [document.documentElement, document.body].some(el => ['overflow', 'overflowY'].some(p => getComputedStyle(el)[p] === 'hidden')));
+    const home = await edges(page, '#tabbar');
     await page.locator('#tabbar').getByRole('button', { name: 'Reels' }).tap();
     await page.locator('section.reel .reel-item').first().waitFor();
-    assert.deepEqual(await edges(page, 'section.reel'), { top: 0, bottom: 852, left: 0, right: 390 }, 'the reel covers the whole screen');
-    const bar = await edges(page, '#tabbar');
-    assert.equal(bar.bottom, 852 - 10, 'Reels: the tab bar sits where it does on Home');
-    for (const selector of ['.reel-rail', '.reel-item .reel-copy .blurb', '.reel-item .reel-progress']) {
-      const box = await edges(page, selector);
-      assert.ok(box.bottom <= bar.top, `${selector} stays clear of the tab bar (${box.bottom} <= ${bar.top})`);
-    }
+    assert.equal(await locked(), false, 'Reels leaves the page unlocked');
+    assert.deepEqual(await edges(page, 'section.reel'), { top: 0, bottom: PHONE.height, left: 0, right: PHONE.width }, 'the reel covers the window');
+    const reels = await edges(page, '#tabbar');
+    assert.deepEqual(reels, home, 'the tab bar sits exactly where it does on Home');
+    await page.waitForTimeout(2500);
+    assert.deepEqual(await edges(page, '#tabbar'), reels, 'and holds still while the reel plays');
     await page.locator('#tabbar').getByRole('button', { name: 'Settings' }).tap();
-    assert.equal(await page.locator('#screen-info').innerText(), 'Screen 852 × 390 · window 797 · filled to 852 · safe 0 / 0 · home-screen app', 'Settings → About says what the app measured');
+    assert.match(await page.locator('#screen-info').innerText(), /window 844 · safe 0 \/ 0 · home-screen app$/, 'Settings → About says what the app sees');
     await page.locator('#tabbar').getByRole('button', { name: 'Home' }).tap();
     await page.locator('main.library').waitFor();
     await openPlayer(page, 'Phone 9:16');
-    assert.deepEqual(await edges(page, 'main.player'), { top: 0, bottom: 852, left: 0, right: 390 }, 'the player covers the whole screen');
-    assert.deepEqual(await edges(page, 'main.player video'), { top: 0, bottom: 852, left: 0, right: 390 }, 'and so does the film box');
-    await still(page, 4.2);
-    const controls = await edges(page, '.np-row');
-    assert.ok(controls.bottom <= 852 - 14 && controls.bottom > 797, `the controls sit at the real bottom (${controls.bottom})`);
-    await npShot(page, 'iphone-app-9x16');
-    await page.getByRole('button', { name: 'Desktop 16:9' }).tap();
-    await page.waitForFunction(() => document.querySelector('.np')?.hasAttribute('data-rotated') && document.querySelector('main.player video')?.readyState >= 2);
-    assert.deepEqual(await edges(page, '.np'), { top: 0, bottom: 852, left: 0, right: 390 }, 'the turned player covers the whole screen');
-    assert.deepEqual(await page.locator('main.player video').evaluate(el => [el.offsetWidth, el.offsetHeight]), [852, 390], 'its frame is the real screen turned');
-    await still(page, 4.2);
-    await npShot(page, 'iphone-app-16x9-turned');
+    assert.equal(await locked(), false, 'the player leaves the page unlocked');
+    assert.deepEqual(await edges(page, 'main.player'), { top: 0, bottom: PHONE.height, left: 0, right: PHONE.width }, 'the player covers the window');
     await context.close();
-  });
-
-  await record('Full height: in a browser tab or a window that is the screen, nothing changes', async () => {
-    for (const app of [false, true]) {
-      const { context, page } = await session({ viewport: app ? { width: 390, height: 852 } : SHORT, phone: true });
-      if (app) await homeScreenApp(context);
-      await loaded(page);
-      const height = app ? 852 : 797;
-      assert.equal(await page.evaluate(() => document.documentElement.classList.contains('app-h')), false, 'no --app-h');
-      assert.equal((await edges(page, '#tabbar')).bottom, height - 10);
-      await page.locator('#tabbar').getByRole('button', { name: 'Reels' }).tap();
-      await page.locator('section.reel .reel-item').first().waitFor();
-      assert.equal((await edges(page, 'section.reel')).bottom, height);
-      await page.locator('#tabbar').getByRole('button', { name: 'Settings' }).tap();
-      assert.match(await page.locator('#screen-info').innerText(), app ? /window 852 · safe 0 \/ 0 · home-screen app$/ : /window 797 · safe 0 \/ 0 · browser$/);
-      await context.close();
-    }
   });
 } finally {
   await browser.close();

@@ -43,7 +43,7 @@ export function mountPlayer(root, { video, landscape, seconds = 0, fit = 'fit', 
   const length = () => Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
   // --- Layout: the frame is the viewport, or the viewport turned sideways. -----------------------------------
   function layout() {
-    const { width: viewW, height: viewH } = viewSize(); // the real screen height on an iPhone home-screen app
+    const { width: viewW, height: viewH } = viewSize();
     const filmW = video.videoWidth || (landscape ? 16 : 9), filmH = video.videoHeight || (landscape ? 9 : 16);
     rotated = shouldRotate({ filmW, filmH, viewW, viewH });
     frame.style.setProperty('--vw', `${viewW}px`); frame.style.setProperty('--vh', `${viewH}px`);
