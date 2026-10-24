@@ -657,9 +657,10 @@ function filmPage(origin) {
   const selected = group.variants.find(v => v.id === film.id);
   const related = all.filter(g => g.id !== group.id && g.product === selected.product);
   let release = '';
-  // the app streams 720p copies; the 1080p masters live on the film's release (it asks for the owner's GitHub sign-in)
+  // the app streams 720p copies; the 1080p masters live on the film's release (it asks for the owner's GitHub sign-in,
+  // so a guest, who can't open it, gets no release links)
   let fullQuality = '';
-  try { const url = new URL(film.release); if (url.protocol === 'https:') { release = `<a class="release-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">View release ${icon('arrow')}</a>`; fullQuality = `<a class="secondary full-quality" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">Full quality ${icon('arrow')}</a>`; } } catch { /* Old catalogs can omit a release link. */ }
+  if (!isGuest()) try { const url = new URL(film.release); if (url.protocol === 'https:') { release = `<a class="release-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">View release ${icon('arrow')}</a>`; fullQuality = `<a class="secondary full-quality" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">Full quality ${icon('arrow')}</a>`; } } catch { /* Old catalogs can omit a release link. */ }
   // Cuts in this language; the other language is one small link, never a card of its own.
   const mine = sameLang({ ...selected, variants: group.variants }), other = group.variants.find(v => v.lang !== selected.lang);
   const langSwitch = other ? `<button class="lang-switch" data-variant="${escape(other.id)}"${other.lang === 'ar' ? ' lang="ar" dir="rtl">النسخة العربية' : ' lang="en" dir="ltr">English version'}${icon('arrow')}</button>` : '';

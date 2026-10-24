@@ -600,6 +600,14 @@ try {
     await page.goBack(); await page.goForward();
     await page.locator('main.library').waitFor();
     assert.ok(!page.url().includes('invite'), 'history holds no invite');
+    // The releases are private to the owner, so a guest's details sheet offers no release links.
+    await openFeature(page);
+    const golden = catalog.films.find(f => f.id === 'golden-hour');
+    assert.ok(golden.release?.startsWith('https://') && golden.title.includes(await page.locator('#detail-title').innerText()), 'the featured film has a release');
+    assert.equal(await page.locator('#film-detail .full-quality, #film-detail .release-link').count(), 0, 'no release links for a guest');
+    assert.doesNotMatch(await page.locator('#film-detail').innerText(), /github|full quality|view release/i, 'no GitHub words in a guest\'s details');
+    await page.keyboard.press('Escape');
+    await page.locator('#film-detail').waitFor({ state: 'hidden' });
     await page.locator('#tabbar [data-tab=settings]').click();
     await page.locator('main.settings').waitFor();
     const settings = await mainText(page);
