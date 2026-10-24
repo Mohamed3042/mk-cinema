@@ -42,15 +42,27 @@ Search and chips open a grid with a title count. Clear filters returns to the ho
 
 ### Tabs
 
-- **Desktop:** a top bar with Home, New & Hot, Films, Ads, Demos, My List, search, and settings. The tabs sit in one frosted capsule and a white pill slides to the open tab. The bar is clear over the billboard and turns to frosted ink (72 %) within the first 80 px of scroll.
-- **Phone:** a floating frosted capsule with Home, New & Hot, Search, and My List, 10 px above the iPhone home indicator.
+- **Desktop:** a top bar with Home, New & Hot, Films, Ads, Demos, Reels, My List, search, and the Settings gear. The tabs sit in one frosted capsule and a white pill slides to the open tab; the gear turns white while Settings is open. The bar is clear over the billboard and turns to frosted ink (72 %) within the first 80 px of scroll.
+- **Phone:** a floating frosted capsule with Home, New & Hot, Reels, Search, and Settings, 10 px above the iPhone home indicator. My List is one tap away as a row on Home and through Settings → **Open My List** (its back button returns to Settings).
 - Films, Ads, and Demos are the home again, limited to that kind. Switching tabs crossfades for 250 ms (a view transition; older browsers get a fade-in).
 - **New & Hot** is a vertical feed of every title, newest first. The film nearest the middle of the screen moves only while you scroll and stops about 50 ms after the last input; scrolling back rewinds it. It is the owner's pop-and-ship scroll film, adapted (`chase` in `motion.js`, `feed.js`).
-- **My List** keeps film ids in `mkc.list` (demo: `mkc.demo.list`). Nothing else is stored, and there is no token. A title with several cuts counts as listed when any cut is.
+- **My List** keeps film ids in `mkc.list` (demo: `mkc.demo.list`). Nothing else is stored, and there is no token. A title with several cuts counts as listed when any cut is. Home shows a **My List** row (after Continue watching) when the list has titles; it updates in place, and the row you are looking at stays where it is.
 
-### Shuffle
+### Reels
 
-**Shuffle** in the top bar plays the whole cinema as a reel: one film fills the screen and plays from the start with sound, and when it ends the next one comes up. Swipe up or down on a phone; on a desktop use the wheel, the arrow keys or the arrows on the right. Tap the film to pause, **m** mutes, **Esc** or the close button goes back to where you were. The order is new every time: each title appears once per round, one product never plays twice in a row when that can be avoided, and a new round is drawn before the last one runs out (`shuffleDeck` in `reel.js`). A phone plays the 9:16 cut and a desktop the 16:9 cut, each falling back to the other; a cut in the screen's shape fills it, any other is shown whole over a blur of its poster. There is one video element, started inside the opening tap, so an iPhone keeps playing with sound from film to film; if a browser still refuses sound, the reel plays muted and shows **Tap for sound**. On an iPhone, where Safari refuses GitHub's streams, each film is downloaded whole before it plays (up to 40 MB, as for previews; every phone cut in the library is smaller). A film whose short-lived link expires midway gets a fresh one and carries on where it was. A film that cannot play shows a note and moves on after 2.5 s; three in a row stop the reel instead of cycling through the cinema, and a token, access or rate-limit problem goes to the same screens as the player. About once a second the brightness of the frame on screen (when the browser can read it) deepens the shade under the title, as pale posters do. With reduced motion nothing moves on by itself: a film that ends or cannot play waits for a swipe. Nothing is stored.
+The **Reels** tab plays the cinema as a reel, TikTok style: one film fills the screen and plays from the start with sound, and when it ends the next one comes up. On a phone the film runs edge to edge under the floating tab bar, which stays working; the title, the controls and the progress line all sit above it. On a desktop the reel fills the area under the top bar. Swipe up or down on a phone; on a desktop use the wheel, the arrow keys or the arrows on the right. Tap the film to pause, **m** mutes; the reel is a keyboard stop after the bar, where Space pauses. Leaving the tab stops and releases the film; coming back in the same visit finds the same films in the same order, on the same film, at the same time (a change in Settings starts a fresh reel). What plays, the order, the sound and what happens at a film's end are set in Settings. In Shuffle order the order is new every time: each title appears once per round, one product never plays twice in a row when that can be avoided, and a new round is drawn before the last one runs out (`shuffleDeck` in `reel.js`). A phone plays the 9:16 cut and a desktop the 16:9 cut, each falling back to the other; a cut in the screen's shape fills it, any other is shown whole over a blur of its poster. There is one video element, started inside the tap on the Reels tab (the tab skips the crossfade for that), so an iPhone keeps playing with sound from film to film; if a browser still refuses sound, the reel plays muted and shows **Tap for sound**. On an iPhone, where Safari refuses GitHub's streams, each film is downloaded whole before it plays (up to 40 MB, as for previews; every phone cut in the library is smaller). A film whose short-lived link expires midway gets a fresh one and carries on where it was. A film that cannot play shows a note and moves on after 2.5 s; three in a row stop the reel instead of cycling through the cinema, and a token, access or rate-limit problem goes to the same screens as the player. About once a second the brightness of the frame on screen (when the browser can read it) deepens the shade under the title, as pale posters do. With reduced motion, or **When a film ends: Wait**, nothing moves on by itself: a film that ends waits for a swipe, and a tap plays it again (with reduced motion a film that cannot play waits too). If the chosen kinds hold no titles, Reels shows a calm empty screen with **Open Settings** and **Browse everything**. The reel's place is kept in memory only.
+
+### Settings
+
+Settings is a page (the phone's Settings tab, the desktop gear, and the gear on the Connect and error screens, where a back button returns). Every control changes what the app does:
+
+- **Playback:** Autoplay previews (on by default; off under reduced motion, and the switch says so).
+- **Reels:** Start with sound (on) · Which titles: Films, Ads, Demos with their counts (all on; the last one stays on) · Order: Shuffle or Newest first · When a film ends: Play the next or Wait.
+- **My List:** Open My List, with the number of saved titles.
+- **Connection:** the token state in plain words and **Forget token**.
+- **About:** number of titles, demo or private collection, and the app shell version this browser holds for offline.
+
+The choices are one JSON key, `mkc.settings` (`settings.js`); a missing or broken value falls back to its default, an older `mkc.autoplay` choice is carried over, and blocked storage keeps the choices for the visit.
 
 ### Previews and autoplay
 
@@ -86,11 +98,11 @@ npm.cmd test
 npm.cmd run test:browser
 ```
 
-The browser suite uses headless Chrome at `C:\Program Files\Google\Chrome\Application\chrome.exe`, with a separate test profile inside this folder. It starts and stops its own local server. Close another server on port 4173 first. `tests/browser.mjs` runs with reduced motion on (the screens, player, and save flow); `tests/motion.mjs` then runs in real time with motion on (tabs, billboard, hover card, More info, rows, New & Hot, My List, Settings, reduced motion). `$env:ONLY='hover card'; node tests/motion.mjs` runs only the motion checks whose name contains that text.
+The browser suite uses headless Chrome at `C:\Program Files\Google\Chrome\Application\chrome.exe`, with a separate test profile inside this folder. It starts and stops its own local server. Close another server on port 4173 first. `tests/browser.mjs` runs with reduced motion on (the screens, player, and save flow); `tests/motion.mjs` then runs in real time with motion on (tabs, billboard, hover card, More info, rows, New & Hot, My List, Reels, Settings, reduced motion). `$env:ONLY='hover card'; node tests/motion.mjs` runs only the motion checks whose name contains that text.
 
 - Phone captures: `shots/<screen>.png` at 390 × 844.
 - Desktop captures: `shots/<screen>-desktop.png` at 1440 × 900.
-- Current screens: `home`, `new-and-hot`, `my-list`, `modal` (the phone sheet), `bob-card` (desktop only), `filtered-grid`, `search`, `detail`, and `player`. Error and save state captures are also refreshed.
+- Current screens: `home`, `new-and-hot`, `my-list`, `reels`, `settings`, `modal` (the phone sheet), `bob-card` (desktop only), `filtered-grid`, `search`, `detail`, and `player`. Error and save state captures are also refreshed.
 - Machine results: `shots/results.json` and `shots/results-motion.json`.
 - Motion proof: `npm.cmd run shots:motion` records a scripted tour (desktop, then phone) with Playwright video in `shots/motion/` and cuts 12-frame contact strips with ffmpeg to `shots/motion-<name>.png`.
 - Human review and test scope: `REPORT.md`.
