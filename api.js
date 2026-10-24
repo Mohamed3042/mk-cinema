@@ -15,6 +15,7 @@ export class CinemaError extends Error {
       offline: 'You are offline',
       'github-unreachable': 'GitHub is unavailable',
       invalid: 'The library data is not valid',
+      write: 'This key can change files',
     };
     super(messages[code] || messages.invalid);
     this.name = 'CinemaError';
@@ -125,6 +126,29 @@ export async function getCatalog({ demo = false, token, signal } = {}) {
     invalid();
   }
   return catalog(data);
+}
+
+// Checks a key made for an invite: it must read cinema.json (a valid catalog) and must not carry a write scope.
+// Only classic keys report scopes (X-OAuth-Scopes); GitHub has no way to read a fine-grained key's own permissions,
+// so for those the caller warns instead. No write request is ever sent to find out.
+const WRITE_SCOPE = /(?:^|,)\s*(?:repo|public_repo|delete_repo|workflow|(?:write|admin):[a-z_:]+)\s*(?=,|$)/u;
+// GitHub-Authentication-Token-Expiration looks like "2027-01-22 10:00:00 UTC" (or "… +0000").
+function expiry(value) {
+  if (!value) return null;
+  const time = [value, value.replace(' ', 'T').replace(/\s*UTC$/u, 'Z').replace(/\s+([+-]\d{2}):?(\d{2})$/u, '$1:$2')].map(Date.parse).find(Number.isFinite);
+  return time === undefined ? null : new Date(time).toISOString();
+}
+export async function checkKey(token, { signal } = {}) {
+  const response = await request(apiURL('cinema.json'), { token: auth(token), accept: 'application/vnd.github.raw', signal });
+  const scopes = response.headers.get('x-oauth-scopes');
+  let data;
+  try { data = await response.json(); } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    invalid();
+  }
+  const library = catalog(data);
+  if (scopes != null && WRITE_SCOPE.test(scopes)) throw new CinemaError('write');
+  return { titles: library.films.length, expires: expiry(response.headers.get('github-authentication-token-expiration')) };
 }
 
 async function openPosterCache(updated) {

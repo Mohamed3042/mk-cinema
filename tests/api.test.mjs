@@ -237,3 +237,36 @@ test('forget waits for a private cache write already in flight before deleting i
     assert.equal(names.size, 0);
   } finally { delete globalThis.caches; }
 });
+
+test('invite key check: reads cinema.json with the key in the header only, and returns the expiry GitHub reports', async () => {
+  const fake = 'github_pat_11FAKEFAKE0000000000_testonlynotarealkeyAbCdEfGh1234';
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'https://api.github.com/repos/Mohamed3042/mk-cinema-library/contents/cinema.json');
+    assert.ok(!String(url).includes(fake), 'never in the URL');
+    assert.equal(options.headers.Authorization, `Bearer ${fake}`);
+    return Response.json(good(), { headers: { 'github-authentication-token-expiration': '2027-01-22 10:00:00 UTC' } });
+  };
+  assert.deepEqual(await api.checkKey(fake), { titles: 1, expires: '2027-01-22T10:00:00.000Z' });
+  globalThis.fetch = async () => Response.json(good(), { headers: { 'github-authentication-token-expiration': '2027-01-22 10:00:00 +0300' } });
+  assert.equal((await api.checkKey(fake)).expires, '2027-01-22T07:00:00.000Z');
+  globalThis.fetch = async () => Response.json(good());
+  assert.equal((await api.checkKey(fake)).expires, null, 'no header: unknown');
+});
+
+test('invite key check: write scopes are refused, read-only scopes pass, and GitHub refusals keep their codes', async () => {
+  for (const scopes of ['repo', 'public_repo, read:user', 'read:org, write:packages', 'workflow', 'admin:org']) {
+    globalThis.fetch = async () => Response.json(good(), { headers: { 'x-oauth-scopes': scopes } });
+    await assert.rejects(api.checkKey('key'), { code: 'write' }, scopes);
+  }
+  for (const scopes of ['', 'read:user', 'read:packages, read:org']) {
+    globalThis.fetch = async () => Response.json(good(), { headers: { 'x-oauth-scopes': scopes } });
+    assert.equal((await api.checkKey('key')).titles, 1, `read-only: "${scopes}"`);
+  }
+  for (const [status, code] of [[401, 'token'], [403, 'token'], [404, 'access']]) {
+    globalThis.fetch = async () => new Response('{}', { status });
+    await assert.rejects(api.checkKey('key'), { code });
+  }
+  globalThis.fetch = async () => Response.json({ version: 9 });
+  await assert.rejects(api.checkKey('key'), { code: 'invalid' }, 'the key must read a real catalog');
+  await assert.rejects(api.checkKey(''), { code: 'token' });
+});
