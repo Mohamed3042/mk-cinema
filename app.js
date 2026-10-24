@@ -9,6 +9,7 @@ import { createBob } from './bob.js';
 import { openSheet, closeSheet, enableDrag } from './modal.js';
 import { mountAmbient, paleness } from './ambient.js';
 import { mountReel } from './reel.js';
+import { mountPlayer } from './player.js';
 import { KINDS, readSettings, writeSettings, toggleKind, reelKinds, reelDeck, nextRound } from './settings.js';
 
 const main = document.querySelector('main');
@@ -51,7 +52,11 @@ const iconPaths = {
   offline: '<path d="m3 3 18 18M2 9a16 16 0 0 1 18-2M6 13a10 10 0 0 1 9-2M10 17l2-1"/><circle cx="12" cy="21" r="1"/>',
   cloud: '<path d="M6 18a5 5 0 0 1-1-10 7 7 0 0 1 13-2M18 10a4 4 0 0 1 0 8h-7M3 22 22 2"/>',
   sound: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 8a6 6 0 0 1 0 8M19 4a11 11 0 0 1 0 16"/>',
-  expand: '<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/>', arrow: '<path d="m9 5 7 7-7 7"/>', alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/>',
+  expand: '<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/>', collapse: '<path d="M9 3v6H3m18 0h-6V3M3 15h6v6m6 0v-6h6"/>',
+  fill: '<path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/>', fit: '<path d="M4 14h6v6M20 10h-6V4M14 10l6-6M4 20l6-6"/>',
+  back10: '<path d="M12 4.6a7.6 7.6 0 1 1-7.6 7.6"/><path d="M12.6 2 9.8 4.6l2.8 2.6"/><text x="12.3" y="15.4" font-size="7.4" font-weight="600" font-family="DM, sans-serif" text-anchor="middle" fill="currentColor" stroke="none">10</text>',
+  fwd10: '<path d="M12 4.6a7.6 7.6 0 1 0 7.6 7.6"/><path d="M11.4 2l2.8 2.6-2.8 2.6"/><text x="11.7" y="15.4" font-size="7.4" font-weight="600" font-family="DM, sans-serif" text-anchor="middle" fill="currentColor" stroke="none">10</text>',
+  airplay: '<path d="M6 17H4.5A2.5 2.5 0 0 1 2 14.5v-9A2.5 2.5 0 0 1 4.5 3h15A2.5 2.5 0 0 1 22 5.5v9a2.5 2.5 0 0 1-2.5 2.5H18"/><path d="m12 14 5 7H7Z" fill="currentColor" stroke="none"/>', arrow: '<path d="m9 5 7 7-7 7"/>', alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/>',
   home: '<path d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M10 20v-5h4v5"/>', flame: '<path d="M12 3c.4 3 3.2 4.6 4.4 7A6.5 6.5 0 1 1 5.6 14c0-1.9.8-3.4 2-4.5.3 1.3.9 2 1.9 2.4C9.4 8.7 10.2 5.4 12 3Z"/>',
   list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>',
   film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>',
@@ -179,6 +184,7 @@ function chrome() {
   topbar.hidden = !show || (screen === 'reel' && !desktop);
   document.body.classList.toggle('has-chrome', show);
   document.body.classList.toggle('on-reel', show && screen === 'reel');
+  document.body.classList.toggle('on-player', screen === 'player');
   if (!show) { tabbar.hidden = true; return; }
   tabbar.hidden = desktop;
   if (chromeKey !== String(desktop)) {
@@ -407,7 +413,7 @@ function settingsView({ solo = false } = {}) {
   const group = (id, label, rows) => `<section class="set-group" aria-labelledby="set-${id}"><h2 class="set-label" id="set-${id}">${label}</h2><div class="set-card">${rows}</div></section>`;
   const tokenState = demo ? 'Demo, no token used' : token ? 'Saved in this browser' : 'Not connected';
   return `<section class="settings-page" aria-labelledby="settings-title"><div class="settings-head">${solo ? `<button class="icon-button" data-action="settings-back" aria-label="Back">${icon('back')}</button>` : ''}<h1 id="settings-title">Settings</h1></div>
-${group('playback', 'Playback', switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.'))}
+${group('playback', 'Playback', `${switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.')}${choiceRow('player-fit', 'Picture in the player', [['fit', 'Fit'], ['fill', 'Fill']], prefs.playerFit, 'Fit shows the whole film. Fill covers the screen and can trim its edges. A pinch in the player switches too.')}`)}
 ${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder)}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
 ${catalog ? group('list', 'My List', `<button class="set-row set-link" data-action="open-list"><span class="set-name">Open My List</span><span class="set-value">${plural(saved)}</span>${icon('arrow')}</button>`) : ''}
 ${group('connection', 'Connection', `<div class="set-row"><span class="set-name">Token</span><span class="set-value">${tokenState}</span></div><button class="set-row set-link set-danger" id="forget-token" data-action="forget-token" aria-describedby="forget-note"><span class="set-name">Forget token</span></button><p class="set-foot" id="forget-note">Removes the token and cached posters, then goes back to Connect.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`)}
@@ -551,13 +557,39 @@ async function playbackURL(signal, whole = false, onProgress) {
   if (!response.ok) throw new CinemaError('invalid');
   return URL.createObjectURL(await response.blob());
 }
-async function play() {
-  screen = 'player';
-  mount('player', `<header class="player-header"><button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button><div>${title(film,'h1')}<p class="eyebrow">${kindName(version.kind)} ${version.kind==='phone'?'9:16':'16:9'}</p></div></header><div class="video-stage"><video playsinline preload="metadata" aria-label="${escape(film.title)}"></video><button class="center-play" data-action="toggle-play" aria-label="Pause">${icon('pause')}</button><p class="player-status" role="status">Opening film…</p></div><div class="player-controls"><label class="sr-only" for="seek">Seek</label><input type="range" id="seek" min="0" max="100" step="0.1" value="0"><div class="player-bottom"><span id="elapsed">0:00</span><span id="total">${duration(film.seconds)}</span><button class="icon-button" data-action="mute" aria-label="Mute">${icon('sound')}</button><button class="icon-button" data-action="fullscreen" aria-label="Full screen">${icon('expand')}</button></div></div>`);
+// The player: only the film, edge to edge, with the controls floating over it (player.js).
+function playerView() {
+  const shape = v => v.kind === 'phone' ? '9:16' : '16:9';
+  const cutSwitch = film.versions.length > 1 ? `<div class="np-cuts" role="group" aria-label="Picture version">${film.versions.map(v => `<button class="np-cut" data-np="cut" data-cut="${v.kind}" aria-pressed="${v === version}" aria-label="${kindName(v.kind)} ${shape(v)}">${icon(v.kind)}<span>${kindName(v.kind)}</span></button>`).join('')}</div>` : '';
+  const full = document.fullscreenEnabled ? `<button class="np-btn" data-np="fullscreen" aria-label="Full screen">${icon('expand')}</button>` : '';
+  const ripple = (side, name) => `<div class="np-ripple" data-side="${side}" aria-hidden="true"><span>${icon(name)}<b></b></span></div>`;
+  return `<div class="np" data-ui="on" data-fit="${prefs.playerFit}">
+<video class="np-video" playsinline x-webkit-airplay="allow" preload="metadata" aria-label="${escape(film.title)}"></video>
+<div class="np-touch" aria-hidden="true"></div>${ripple('back', 'back10')}${ripple('forward', 'fwd10')}
+<div class="np-scrim" aria-hidden="true"></div>
+<div class="np-ui">
+<div class="np-top"><button class="np-btn" data-action="back" aria-label="Back to film">${icon('back')}</button><div class="np-title"><p class="np-kicker" dir="auto">${escape(kicker(film))}</p><h1 class="np-name film-title" dir="auto">${escape(splitTitle(film.title).name)}</h1></div><button class="np-btn" data-np="airplay" aria-label="AirPlay" hidden>${icon('airplay')}</button><button class="np-btn" data-np="mute" aria-label="Mute">${icon('sound')}</button></div>
+<div class="np-mid"><button class="np-btn np-skip" data-np="back10" aria-label="Back 10 seconds">${icon('back10')}</button><button class="np-play" data-np="play" aria-label="Pause">${icon('pause')}</button><button class="np-btn np-skip" data-np="fwd10" aria-label="Forward 10 seconds">${icon('fwd10')}</button></div>
+<div class="np-bottom"><div class="np-seek"><span class="np-time" data-np-elapsed>0:00</span><div class="np-scrub" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="${Math.round(film.seconds)}" aria-valuenow="0" aria-valuetext="0:00 of ${duration(film.seconds)}"><div class="np-track"><i class="np-buffer"></i><i class="np-fill"></i><i class="np-knob"></i><span class="np-bubble" aria-hidden="true"></span></div></div><span class="np-time np-left" data-np-left>-${duration(film.seconds)}</span></div>
+<div class="np-row"><button class="np-pill" data-np="fit" aria-pressed="${prefs.playerFit === 'fill'}" aria-label="Fill the screen">${icon(prefs.playerFit === 'fill' ? 'fit' : 'fill')}<span>Fill</span></button>${cutSwitch}<span class="np-gap"></span>${full}</div></div>
+</div>
+<p class="player-status" role="status">Opening film…</p>
+</div>`;
+}
+// `resumeAt` (seconds) comes from a cut switch inside the player; otherwise the saved progress decides.
+async function play(resumeAt) {
+  mount('player', playerView());
   const stamp = revision, signal = operation.signal, video = main.querySelector('video');
   const status = main.querySelector('.player-status');
   // Called inside the tap so iPhone lets the later play() start with sound after the URL arrives.
   video.play().catch(() => {});
+  live.player = mountPlayer(main, {
+    video, landscape: version.kind !== 'phone', seconds: film.seconds, fit: prefs.playerFit, reduced, icon,
+    onFit(fit) { prefs.playerFit = fit; saveSettings(); },
+    onBack: () => filmPage(),
+    // Inside the tap again, so the new cut keeps its sound; it carries on where the other one was.
+    onCut(kind) { const at = video.readyState >= 1 ? video.currentTime : undefined; version = film.versions.find(v => v.kind === kind) || version; void play(at); },
+  });
   let refreshing = false, recoveryUsed = false, lastTime = 0, recoveryTime = 0, streamed = false, whole = false;
   async function source(resume = 0) {
     const url = await playbackURL(signal, whole, ({ loaded, total }) => {
@@ -569,13 +601,10 @@ async function play() {
     video.addEventListener('loadedmetadata', () => { video.currentTime = Math.min(resume, video.duration || resume); }, { once:true });
     try { await video.play(); status.textContent = ''; }
     catch (error) { if (error.name==='NotAllowedError') { status.textContent='Tap Play to watch.'; } else if (error.name!=='AbortError' && !video.error) throw error; }
-    if (stamp === revision) updatePlayButton();
   }
-  video.addEventListener('timeupdate',()=>{ if(stamp!==revision) return; lastTime=video.currentTime; persistPlayback(); if(recoveryUsed && lastTime>recoveryTime+1) recoveryUsed=false; main.querySelector('#elapsed').textContent=duration(lastTime); main.querySelector('#seek').value=video.duration ? lastTime/video.duration*100 : 0; });
-  video.addEventListener('durationchange',()=>{ if(stamp===revision && Number.isFinite(video.duration)) main.querySelector('#total').textContent=duration(video.duration); });
-  video.addEventListener('play',updatePlayButton); video.addEventListener('pause',updatePlayButton);
+  video.addEventListener('timeupdate',()=>{ if(stamp!==revision) return; lastTime=video.currentTime; persistPlayback(); if(recoveryUsed && lastTime>recoveryTime+1) recoveryUsed=false; });
   video.addEventListener('pause', () => { if (stamp === revision) persistPlayback(); });
-  video.addEventListener('ended', () => { if (stamp === revision) { persistPlayback(); updatePlayButton(); } });
+  video.addEventListener('ended', () => { if (stamp === revision) persistPlayback(); });
   video.addEventListener('loadedmetadata',()=>{ streamed=true; });
   video.addEventListener('error',async()=>{
     if (stamp!==revision || refreshing) return;
@@ -586,14 +615,9 @@ async function play() {
     try { await source(lastTime); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
     finally { refreshing=false; }
   });
-  main.querySelector('#seek').addEventListener('input',event=>{ if(Number.isFinite(video.duration)) video.currentTime=Number(event.target.value)/100*video.duration; });
   const progress = readProgress(storage, progressKey)[film.id];
-  try { await source(progress && progress.time / progress.duration < 0.95 ? progress.time : 0); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
-}
-function updatePlayButton() {
-  const video=main.querySelector('video'), button=main.querySelector('.center-play');
-  if(!video || !button) return;
-  button.innerHTML=icon(video.paused?'play':'pause'); button.setAttribute('aria-label',video.paused?'Play':'Pause');
+  const from = resumeAt ?? (progress && progress.time / progress.duration < 0.95 ? progress.time : 0);
+  try { await source(from); } catch(error) { if(stamp===revision && error.name!=='AbortError') showError(error); }
 }
 function saveScreen(state, preview = false) {
   screen=state;
@@ -681,15 +705,6 @@ async function onClick(event) {
     case 'save': await save(); break;
     case 'cancel-save': filmPage(); break;
     case 'deliver-file': await deliverFile(); break;
-    case 'toggle-play': {
-      const video=main.querySelector('video');
-      if(video.paused) { try { await video.play(); main.querySelector('.player-status').textContent=''; } catch { main.querySelector('.player-status').textContent='Could not play. Return to the film and retry.'; } } else video.pause(); break;
-    }
-    case 'mute': { const video=main.querySelector('video'); video.muted=!video.muted; button.setAttribute('aria-label',video.muted?'Unmute':'Mute'); button.setAttribute('aria-pressed',String(video.muted)); break; }
-    case 'fullscreen': {
-      const video=main.querySelector('video');
-      try { if(document.fullscreenElement) await document.exitFullscreen(); else if(main.requestFullscreen) await main.requestFullscreen(); else if(video.webkitEnterFullscreen) video.webkitEnterFullscreen(); } catch { main.querySelector('.player-status').textContent='Full screen is not available on this device.'; } break;
-    }
   }
 }
 [main, topbar, tabbar].forEach(el => el.addEventListener('click', onClick));
@@ -724,6 +739,7 @@ main.addEventListener('change', event => {
   else if (input.id === 'reel-sound') { prefs.reelSound = input.checked; saveSettings(); }
   else if (input.name === 'reel-order' && input.checked) { prefs.reelOrder = input.value; saveSettings(); }
   else if (input.name === 'reel-end' && input.checked) { prefs.reelEnd = input.value; saveSettings(); }
+  else if (input.name === 'player-fit' && input.checked) { prefs.playerFit = input.value; saveSettings(); }
 });
 // Which titles Reels plays. The last kind on stays on, and says so.
 function chooseKind(button) {

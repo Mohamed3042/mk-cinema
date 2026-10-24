@@ -13,7 +13,7 @@ const groups = groupFilms([
 const ids = list => list.map(item => item.id);
 
 test('settings: defaults when nothing is stored, when the JSON is broken, and when storage is blocked', () => {
-  assert.deepEqual(DEFAULTS, { autoplay: true, reelSound: true, reelKinds: ['films', 'ads', 'demos'], reelOrder: 'shuffle', reelEnd: 'next' });
+  assert.deepEqual(DEFAULTS, { autoplay: true, reelSound: true, reelKinds: ['films', 'ads', 'demos'], reelOrder: 'shuffle', reelEnd: 'next', playerFit: 'fit' });
   assert.deepEqual(readSettings(storage()), DEFAULTS);
   assert.deepEqual(readSettings(storage({ 'mkc.settings': '{not json' })), DEFAULTS);
   assert.deepEqual(readSettings(storage({ 'mkc.settings': '[1,2]' })), DEFAULTS);
@@ -41,6 +41,15 @@ test('settings: written as one JSON key and read back the same; the old autoplay
   assert.deepEqual(readSettings(store), next);
   assert.equal(readSettings(storage({ 'mkc.autoplay': '1' })).autoplay, true);
   assert.equal(readSettings(storage({ 'mkc.autoplay': '0', 'mkc.settings': JSON.stringify({ autoplay: true }) })).autoplay, true, 'the new key wins');
+});
+
+test('settings: the player shows the whole film unless Fill was chosen', () => {
+  assert.equal(DEFAULTS.playerFit, 'fit', 'Fit by default: titles near the frame edges are never cut');
+  assert.equal(readSettings(storage({ 'mkc.settings': JSON.stringify({ playerFit: 'fill' }) })).playerFit, 'fill');
+  for (const bad of ['cover', 'FILL', 1, null]) assert.equal(readSettings(storage({ 'mkc.settings': JSON.stringify({ playerFit: bad }) })).playerFit, 'fit');
+  const store = storage();
+  writeSettings(store, { ...DEFAULTS, playerFit: 'fill' });
+  assert.equal(JSON.parse(store.getItem('mkc.settings')).playerFit, 'fill', 'kept in the one settings key');
 });
 
 test('settings: a kind can be switched off, but the last one stays on', () => {

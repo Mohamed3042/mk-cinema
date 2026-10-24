@@ -7,7 +7,7 @@ export const SETTINGS_KEY = 'mkc.settings';
 const LEGACY_AUTOPLAY = 'mkc.autoplay'; // before Settings had a page, Autoplay previews lived here
 export const KINDS = ['films', 'ads', 'demos'];
 const KIND_FILTER = { films: 'Films', ads: 'Ads', demos: 'Demos' };
-export const DEFAULTS = Object.freeze({ autoplay: true, reelSound: true, reelKinds: Object.freeze([...KINDS]), reelOrder: 'shuffle', reelEnd: 'next' });
+export const DEFAULTS = Object.freeze({ autoplay: true, reelSound: true, reelKinds: Object.freeze([...KINDS]), reelOrder: 'shuffle', reelEnd: 'next', playerFit: 'fit' });
 
 function normalize(raw = {}) {
   const kinds = Array.isArray(raw.reelKinds) ? KINDS.filter(kind => raw.reelKinds.includes(kind)) : [];
@@ -17,6 +17,8 @@ function normalize(raw = {}) {
     reelKinds: kinds.length ? kinds : [...DEFAULTS.reelKinds],
     reelOrder: ['shuffle', 'newest'].includes(raw.reelOrder) ? raw.reelOrder : DEFAULTS.reelOrder,
     reelEnd: ['next', 'wait'].includes(raw.reelEnd) ? raw.reelEnd : DEFAULTS.reelEnd,
+    // The player shows the whole film (Fit) unless Fill was chosen: the owner's films carry titles near the edges.
+    playerFit: ['fit', 'fill'].includes(raw.playerFit) ? raw.playerFit : DEFAULTS.playerFit,
   };
 }
 export function readSettings(storage, key = SETTINGS_KEY) {
