@@ -5,9 +5,11 @@ import { PREVIEW_START } from './motion.js';
 // download when canDownload is set (iPhone Safari refuses GitHub's octet-stream films as a stream).
 // onPlaying fires once a frame is on screen, after the jump to `start`, so the poster never flashes the first frame.
 // With `sound` (the Shuffle reel) it plays unmuted; if the browser refuses that, it carries on muted and calls onMuted.
-export function startPreview(video, { getURL, canDownload = false, start = PREVIEW_START, sound = false, onPlaying = () => {}, onEnded = () => {}, onFail = () => {}, onMuted = () => {} }) {
+// With `recover` (whole films in the reel) a film that breaks after it started gets one fresh link and carries on
+// where it was, as the player does. onFail gets the error when the address itself could not be had.
+export function startPreview(video, { getURL, canDownload = false, start = PREVIEW_START, sound = false, recover = false, onPlaying = () => {}, onEnded = () => {}, onFail = () => {}, onMuted = () => {} }) {
   const abort = new AbortController();
-  let dead = false, attempt = 0, loaded = false, seeking = false, shown = false;
+  let dead = false, attempt = 0, loaded = false, seeking = false, shown = false, resumeAt = 0;
   video.muted = !sound; video.playsInline = true; video.preload = 'auto'; video.loop = false;
 
   const stop = () => {
@@ -16,10 +18,10 @@ export function startPreview(video, { getURL, canDownload = false, start = PREVI
     for (const [name, handler] of Object.entries(handlers)) video.removeEventListener(name, handler);
     video.pause(); video.removeAttribute('src'); video.load();
   };
-  const fail = () => { if (!dead) { stop(); onFail(); } };
+  const fail = error => { if (!dead) { stop(); onFail(error); } };
   async function load() {
     let url;
-    try { url = await getURL({ signal: abort.signal, ...(attempt === 1 ? { fresh: true } : attempt > 1 ? { whole: true } : {}) }); } catch { fail(); return; }
+    try { url = await getURL({ signal: abort.signal, ...(attempt === 1 ? { fresh: true } : attempt > 1 ? { whole: true } : {}) }); } catch (error) { fail(error); return; }
     if (dead) return;
     loaded = false; seeking = false;
     video.src = url;
@@ -30,6 +32,7 @@ export function startPreview(video, { getURL, canDownload = false, start = PREVI
   const handlers = {
     loadedmetadata() {
       loaded = true;
+      if (resumeAt) { seeking = true; video.currentTime = Math.min(resumeAt, video.duration || resumeAt); resumeAt = 0; return; }
       seeking = start > 0 && Number.isFinite(video.duration) && video.duration > 0;
       if (seeking) video.currentTime = video.duration * start;
     },
@@ -38,6 +41,7 @@ export function startPreview(video, { getURL, canDownload = false, start = PREVI
     ended() { onEnded(); },
     error() {
       if (dead) return;
+      if (loaded && recover && attempt === 0) { resumeAt = video.currentTime; attempt = 1; void load(); return; }
       if (loaded) { fail(); return; }
       attempt += 1;
       if (attempt === 1 || (attempt === 2 && canDownload)) void load(); else fail();

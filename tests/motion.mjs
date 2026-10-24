@@ -818,7 +818,7 @@ try {
     await page.keyboard.press(' ');
     assert.equal(await page.locator('.reel.is-paused').count(), 0, 'Space plays again');
     await page.keyboard.press('m');
-    assert.equal(await page.locator('[data-reel=sound]').getAttribute('aria-pressed'), 'false', 'm mutes');
+    assert.equal(await page.locator('[data-reel=sound]').getAttribute('aria-label'), 'Turn sound on', 'm mutes, and the button now offers sound');
     assert.ok(await page.locator('.reel-video').evaluate(video => video.muted));
     await page.locator('.reel-video').evaluate(video => { video.currentTime = Math.max(0, video.duration - 0.3); });
     await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '), null, { timeout: 8000 });
@@ -860,6 +860,24 @@ try {
     assert.equal(await reelCount(page), `1 / ${titleCount}`, 'still on the first film');
     await page.keyboard.press('ArrowDown');
     await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '));
+    await context.close();
+  });
+
+  await record('Shuffle: films that cannot play move on, three in a row stop the reel, and closing returns focus', async () => {
+    const { context, page } = await session();
+    await loaded(page);
+    await page.route('**/demo/*.mp4', route => route.fulfill({ status: 200, body: 'not a film', contentType: 'video/mp4' })); // a file the browser cannot decode
+    await page.locator('[data-action=shuffle]').click();
+    await page.locator('.reel-item.is-active.is-failed').waitFor({ timeout: 8000 });
+    assert.match(await page.locator('.reel-note').textContent(), /cannot play here/);
+    await page.waitForFunction(() => /not playing right now/.test(document.querySelector('.reel-note').textContent), null, { timeout: 15000 });
+    const stopped = await reelCount(page);
+    assert.equal(stopped, `3 / ${titleCount}`, 'the third failure in a row stops the reel');
+    await page.waitForTimeout(3200);
+    assert.equal(await reelCount(page), stopped, 'and it stays stopped');
+    await page.keyboard.press('Escape');
+    await page.locator('main.library').waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.action), 'shuffle', 'focus goes back to Shuffle');
     await context.close();
   });
 

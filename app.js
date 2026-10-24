@@ -214,7 +214,7 @@ function mount(next, html, { focus = true } = {}) {
 // details, a pale poster also deepens the shade so the white type stays readable.
 function markReady(img) {
   img.classList.add('is-ready'); img.parentElement.classList.add('is-ready');
-  if (img.matches('.billboard-poster, .hot-poster, .detail-poster, .reel-poster')) img.parentElement.style.setProperty('--pale', paleness(img).toFixed(2));
+  if (img.matches('.billboard-poster, .hot-poster, .detail-poster, .reel-poster')) img.parentElement.style.setProperty('--pale', (paleness(img) ?? 0).toFixed(2));
 }
 main.addEventListener('load', event => { if (event.target.matches?.('img.poster')) markReady(event.target); }, true);
 async function fillPosters(stamp) {
@@ -259,7 +259,7 @@ async function loadLibrary() {
   } catch (error) { if (error.name !== 'AbortError' && stamp === revision) showError(error); }
 }
 function library() {
-  savedFile = undefined;
+  savedFile = undefined; listDirty = false; // drawing the library shows My List as it is now
   if (!catalog?.films.length) { stateScreen('empty'); return; }
   const all = groupsOf(), progress = readProgress(storage, progressKey);
   const filterScroll = main.querySelector('.filters')?.scrollLeft || 0;
@@ -307,7 +307,8 @@ function openReel() {
   mount('reel', reelView(shuffleDeck(all), all.length));
   main.querySelector('.reel-video').play().catch(() => {});
   live.reel = mountReel(main, {
-    source: id => source(findFilm(id)), icon, onClose: () => library(),
+    source: (id, shape) => source(findFilm(id), shape), icon, say: announce, onError: showError,
+    onClose: () => { library(); document.querySelector('#topbar [data-action=shuffle]')?.focus({ preventScroll: true }); },
     onActive: item => {
       const f = findFilm(item.dataset.film), on = inList(listIds, titleIds(f.id)), button = rail();
       button.dataset.id = f.id; button.setAttribute('aria-pressed', String(on));
@@ -326,11 +327,11 @@ function reelItems(deck) {
   const prefer = desktopQuery.matches ? 'desktop' : 'phone';
   return deck.map((f, index) => {
     const cut = f.versions.find(v => v.kind === prefer) || f.versions[0];
-    return `<article class="reel-item" data-film="${escape(f.id)}" data-shape="${cut.kind}" data-n="${index + 1}" aria-label="${escape(f.title)}"><div class="reel-stage">${poster(f, 'reel-fill', index > 1)}${poster(f, 'reel-poster', index > 1)}<div class="reel-shade"></div><i class="reel-progress" aria-hidden="true"></i></div><div class="reel-copy"><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'reel-title')}<p class="reel-meta">${metaLine(f)}</p><p class="blurb" dir="auto">${escape(f.blurb)}</p></div></article>`;
+    return `<article class="reel-item" aria-hidden="true" data-film="${escape(f.id)}" data-shape="${cut.kind}" data-n="${index + 1}" aria-label="${escape(f.title)}"><div class="reel-stage">${poster(f, 'reel-fill', index > 1)}${poster(f, 'reel-poster', index > 1)}<div class="reel-shade"></div><i class="reel-progress" aria-hidden="true"></i></div><div class="reel-copy"><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'reel-title')}<p class="reel-meta">${metaLine(f)}</p><p class="blurb" dir="auto">${escape(f.blurb)}</p></div></article>`;
   }).join('');
 }
 function reelView(deck, total) {
-  return `<section class="reel" aria-label="Shuffle: the whole cinema" data-total="${total}"><video class="reel-video" playsinline preload="auto" aria-hidden="true" tabindex="-1"></video><div class="reel-track">${reelItems(deck)}</div><div class="reel-top"><button class="icon-button round" data-reel="close" aria-label="Close shuffle">${icon('close')}</button><p class="reel-count" aria-hidden="true">${icon('shuffle')}<b>1 / ${total}</b></p></div><span class="reel-pause" aria-hidden="true">${icon('play')}</span><p class="reel-note" role="status"></p><div class="reel-rail"><button class="icon-button round reel-step" data-reel="prev" aria-label="Previous film">${icon('chevron')}</button><button class="icon-button round reel-step" data-reel="next" aria-label="Next film">${icon('chevron')}</button>${listButton(deck[0], 'reel-list')}<span class="reel-sound"><span class="reel-hint" aria-hidden="true">Tap for sound</span><button class="icon-button round" data-reel="sound" aria-pressed="true" aria-label="Mute">${icon('sound')}</button></span><button class="icon-button round" data-reel="fullscreen" aria-label="Full screen">${icon('expand')}</button></div></section>`;
+  return `<section class="reel" aria-label="Shuffle: the whole cinema" data-total="${total}"><video class="reel-video" playsinline preload="auto" aria-hidden="true" tabindex="-1"></video><div class="reel-top"><button class="icon-button round" data-reel="close" aria-label="Close shuffle">${icon('close')}</button><p class="reel-count" aria-hidden="true">${icon('shuffle')}<b>1 / ${total}</b></p></div><div class="reel-rail"><button class="icon-button round reel-step" data-reel="prev" aria-label="Previous film">${icon('chevron')}</button><button class="icon-button round reel-step" data-reel="next" aria-label="Next film">${icon('chevron')}</button>${listButton(deck[0], 'reel-list')}<span class="reel-sound"><span class="reel-hint" aria-hidden="true">Tap for sound</span><button class="icon-button round" data-reel="sound" aria-label="Mute">${icon('sound')}</button></span><button class="icon-button round" data-reel="fullscreen" aria-label="Full screen">${icon('expand')}</button></div><span class="reel-pause" aria-hidden="true">${icon('play')}</span><p class="reel-note" role="status"></p><div class="reel-track">${reelItems(deck)}</div></section>`;
 }
 function feedView(all) {
   const shown = all.slice(0, 24); // newest first; a long library does not become an endless feed

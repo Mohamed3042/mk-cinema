@@ -1,5 +1,6 @@
 import { reduced } from './motion.js';
 import { startPreview } from './previews.js';
+import { paleness } from './ambient.js';
 
 // Shuffle: the whole cinema as a reel. One film fills the screen and plays from the start; at its end the next one
 // comes up, and a swipe, the wheel or the arrow keys move back and forth. The order is new every time it opens.
@@ -42,11 +43,13 @@ export function shuffleDeck(items, { random = Math.random, key = item => item.pr
 
 // The reel's behaviour over the markup app.js draws (.reel, .reel-track, .reel-item). There is one <video>, and it
 // moves into whichever film is on screen: once the opening tap has started it, an iPhone lets it play with sound
-// for every film after. source(id) gives { getURL, canDownload } (the same streams as previews and the player).
-export function mountReel(root, { source, icon, onActive = () => {}, onClose = () => {}, more = () => false }) {
+// for every film after. source(id, shape) gives { getURL, canDownload } for that cut (the player's streams).
+// onError gets the errors only the app can answer (token, access, rate limit); say() speaks to screen readers.
+const STOP_AFTER = 3; // films in a row that fail before the reel stops moving on by itself
+export function mountReel(root, { source, icon, onActive = () => {}, onClose = () => {}, onError = () => {}, say = () => {}, more = () => false }) {
   const reel = root.querySelector('.reel'), track = reel.querySelector('.reel-track'), video = reel.querySelector('.reel-video');
   const count = reel.querySelector('.reel-count b'), note = reel.querySelector('.reel-note'), soundButton = reel.querySelector('[data-reel=sound]');
-  let active = null, playback = null, frame = 0, timer = 0, held = false, soundOn = true;
+  let active = null, playback = null, frame = 0, timer = 0, held = false, soundOn = true, failures = 0, told = false, sampled = 0;
 
   const items = () => [...track.querySelectorAll('.reel-item')];
   const observer = globalThis.IntersectionObserver && new IntersectionObserver(entries => {
@@ -56,16 +59,23 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
 
   function setSound(on, refused = false) {
     soundOn = on; video.muted = !on;
-    soundButton.setAttribute('aria-pressed', String(on));
     soundButton.setAttribute('aria-label', on ? 'Mute' : 'Turn sound on');
     soundButton.innerHTML = icon(on ? 'sound' : 'mute');
-    reel.classList.toggle('is-quiet', refused && !on); // "Tap for sound" while the browser keeps the first film muted
+    reel.classList.toggle('is-quiet', refused && !on); // "Tap for sound" while the browser keeps the films muted
+    if (refused && !told) { told = true; say('Sound is off. Use the sound button to turn it on.'); }
   }
-  // The progress line under the film follows its time every frame.
+  // The progress line follows the film every frame. About once a second the frame's brightness also sets the shade
+  // under the white type (--pale), so a bright scene behind a dark poster still reads. A stream from another origin
+  // cannot be read; then the poster's value stays.
   function tick() {
     cancelAnimationFrame(frame);
-    const step = () => {
+    const step = now => {
       if (active && video.duration) active.style.setProperty('--p', (video.currentTime / video.duration).toFixed(4));
+      if (active && !video.paused && now - sampled > 900) {
+        sampled = now;
+        const pale = paleness(video);
+        if (pale !== null) active.querySelector('.reel-stage').style.setProperty('--pale', pale.toFixed(2));
+      }
       frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
@@ -75,19 +85,21 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
     playback?.stop(); cancelAnimationFrame(frame); clearTimeout(timer);
     active?.classList.remove('is-active', 'is-live', 'is-ended', 'is-failed');
     active?.style.removeProperty('--p');
+    active?.setAttribute('aria-hidden', 'true');
     active = item; held = false;
     reel.classList.remove('is-paused');
     note.textContent = '';
     item.classList.add('is-active');
+    item.removeAttribute('aria-hidden');
     const stage = item.querySelector('.reel-stage');
     stage.insertBefore(video, stage.querySelector('.reel-shade'));
     count.textContent = `${item.dataset.n} / ${reel.dataset.total}`;
     onActive(item);
     playback = startPreview(video, {
-      ...source(item.dataset.film), start: 0, sound: soundOn,
-      onPlaying: () => { item.classList.add('is-live'); if (held) video.pause(); tick(); },
+      ...source(item.dataset.film, item.dataset.shape), start: 0, sound: soundOn, recover: true,
+      onPlaying: () => { failures = 0; item.classList.add('is-live'); if (held) video.pause(); tick(); },
       onEnded: () => ended(item),
-      onFail: () => failed(item),
+      onFail: error => failed(item, error),
       onMuted: () => setSound(false, true),
     });
     // The reel never runs out: near the end of a round the next round is drawn.
@@ -98,14 +110,19 @@ export function mountReel(root, { source, icon, onActive = () => {}, onClose = (
     const all = items(), next = all[all.indexOf(active) + step];
     if (next) track.scrollTo({ top: next.offsetTop, behavior: reduced() ? 'auto' : 'smooth' });
   }
-  // With reduced motion the reel waits at the end of a film instead of moving on by itself.
+  // With reduced motion nothing moves on by itself: a film that ends, or cannot play, waits for a swipe.
   function ended(item) {
     if (item !== active) return;
     if (reduced()) { item.classList.add('is-ended'); reel.classList.add('is-paused'); } else go(1);
   }
-  function failed(item) {
+  // A film that cannot play moves on after 2.5 s, but a run of them (no connection, GitHub down) stops the reel
+  // rather than spinning through the whole cinema; a token, access or rate-limit problem goes back to the app.
+  function failed(item, error) {
     if (item !== active) return;
+    if (['token', 'access', 'rate-limit'].includes(error?.code)) { onError(error); return; }
     item.classList.add('is-failed');
+    failures += 1;
+    if (failures >= STOP_AFTER) { note.textContent = 'Films are not playing right now. Check the connection, then swipe to try again.'; return; }
     note.textContent = 'This film cannot play here. Swipe for the next one.';
     if (!reduced()) timer = setTimeout(() => { if (active === item) go(1); }, 2500);
   }
