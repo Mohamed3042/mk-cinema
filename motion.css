@@ -210,16 +210,18 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 .empty-list{display:grid;justify-items:center;gap:10px;padding:14vh 24px;text-align:center}
 .empty-list .secondary{width:auto;padding:0 26px;margin-top:10px}
 
-/* Shuffle: the whole cinema as a reel, one film a screen, snapped. As in the player, the film is the only light. */
-.header-actions .icon-button.shuffle-button{width:auto;gap:8px;padding:0 16px 0 13px;border-radius:999px;font-size:13.5px;font-weight:600}
-.shuffle-button svg{width:20px;height:20px}
-/* Icon only where the bar is tight: the smallest phones, and a desktop bar narrower than 1024 px (tabs, actions). */
-@media(max-width:359px),(min-width:900px) and (max-width:1023px){.header-actions .icon-button.shuffle-button{width:44px;padding:0}.shuffle-button span{display:none}}
+/* Reels: the cinema as a reel, one film a screen, snapped. As in the player, the film is the only light.
+   Phone: the film runs edge to edge under the floating tab bar, and everything the reel shows sits above the bar
+   (--reel-clear). Desktop: the reel fills the area under the top bar, which stays frosted ink. */
 .tab{white-space:nowrap}
+/* Seven tabs, search and settings in a bar under 1100 px: the tabs tighten so nothing is clipped. */
+@media(min-width:900px) and (max-width:1099px){.tabs{margin-inline-start:12px}.tab{padding:0 11px;font-size:13px}}
 body:has(.reel){overflow:hidden}
-.reel{position:fixed;inset:0;z-index:40;overflow:hidden;background:#000;color:#fff}
+section.reel{--reel-clear:calc(84px + env(safe-area-inset-bottom));position:fixed;inset:0;z-index:20;overflow:hidden;background:#000;color:#fff}
+@media(min-width:900px){section.reel{--reel-clear:0px;top:calc(var(--bar-h) + env(safe-area-inset-top))}}
 .reel-track{height:100%;overflow-y:auto;overscroll-behavior:contain;scroll-snap-type:y mandatory;scrollbar-width:none}
 .reel-track::-webkit-scrollbar{display:none}
+.reel-track:focus-visible{outline:2px solid #fff;outline-offset:-6px;border-radius:14px}
 .reel-item{position:relative;height:100%;overflow:hidden;isolation:isolate;scroll-snap-align:start;scroll-snap-stop:always}
 .reel-stage{position:absolute;inset:0;background:#000}
 .reel-fill{position:absolute;inset:-6%;width:112%;max-width:none;height:112%;object-fit:cover;border:0;border-radius:0;filter:blur(32px) saturate(1.3) brightness(.5)}
@@ -229,28 +231,28 @@ body:has(.reel){overflow:hidden}
 /* A cut in the screen's own shape fills it; any other is shown whole over a blur of its poster. */
 @media(orientation:portrait){.reel-item[data-shape=phone] .reel-video{object-fit:cover}}
 @media(orientation:landscape){.reel-item[data-shape=desktop] .reel-video{object-fit:cover}}
-.reel-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,rgba(0,0,0,.86) 0%,rgba(0,0,0,.58) 30%,rgba(0,0,0,0) 56%),linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,0) 16%)}
+.reel-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.66) 34%,rgba(0,0,0,0) 62%),linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,0) 16%)}
 .reel-shade::after{content:"";position:absolute;inset:0;opacity:var(--pale,0);transition:opacity .8s;background:linear-gradient(0deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.75) 36%,rgba(0,0,0,0) 62%)}
-.reel-progress{position:absolute;inset:auto 0 0;height:3px;background:#fff;transform:scaleX(var(--p,0));transform-origin:left;opacity:0;transition:opacity .3s}
+.reel-progress{position:absolute;inset:auto 0 var(--reel-clear);height:3px;background:#fff;transform:scaleX(var(--p,0));transform-origin:left;opacity:0;transition:opacity .3s}
 .reel-item.is-live .reel-progress{opacity:.9}
-.reel-copy{position:absolute;inset:auto 72px 0 0;z-index:1;padding:0 0 calc(30px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));pointer-events:none}
+.reel-copy{position:absolute;inset:auto 72px 0 0;z-index:1;padding:0 0 calc(var(--reel-clear) + 20px) max(20px,env(safe-area-inset-left));pointer-events:none}
 .reel-copy .kicker{margin-bottom:8px;color:rgba(255,255,255,.9);text-shadow:0 0 12px rgba(0,0,0,.7),0 1px 2px rgba(0,0,0,.5)}
 .reel-title{margin:0 0 10px;font:600 30px/1.08 DM,Arabic,sans-serif;letter-spacing:-.03em;text-wrap:balance;overflow-wrap:anywhere;text-shadow:0 2px 18px rgba(0,0,0,.45)}
 .reel-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 0;margin:0 0 8px;font-size:13px;font-weight:600;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums;text-shadow:0 1px 8px rgba(0,0,0,.6)}
 .reel-copy .blurb{max-width:520px;font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.reel-top{position:absolute;inset:0 0 auto;z-index:3;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:calc(10px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));pointer-events:none}
+.reel-top{position:absolute;inset:0 0 auto;z-index:3;display:grid;grid-template-columns:1fr;align-items:center;padding:calc(10px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));pointer-events:none}
 .reel-top>button{pointer-events:auto}
 .reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{border:1px solid var(--glass-line);background:rgba(20,22,29,.5);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge)}
 .reel .round:hover{background:rgba(40,43,52,.7)}
 .reel-count,.reel-note,.reel-hint{background:rgba(20,22,29,.64)} /* text on glass keeps 4.5:1 even over a white frame */
-.reel-count{grid-column:2;justify-self:center;display:flex;align-items:center;gap:7px;margin:0;padding:7px 14px 7px 11px;border-radius:999px;font-size:13px;color:#fff;font-variant-numeric:tabular-nums}
+.reel-count{justify-self:center;display:flex;align-items:center;gap:7px;margin:0;padding:7px 14px 7px 11px;border-radius:999px;font-size:13px;color:#fff;font-variant-numeric:tabular-nums}
 .reel-count svg{width:16px;height:16px}.reel-count b{font-weight:600}
 .reel-pause{position:absolute;left:50%;top:50%;z-index:3;display:grid;place-items:center;width:80px;height:80px;margin:-40px 0 0 -40px;border-radius:50%;opacity:0;transform:scale(.85);transition:opacity .25s,transform .4s var(--ease);pointer-events:none}
 .reel-pause svg{width:32px;height:32px;margin-left:4px}
 .reel.is-paused .reel-pause{opacity:1;transform:none}
 .reel-note{position:absolute;left:50%;top:50%;z-index:3;pointer-events:none;width:max-content;max-width:min(320px,80vw);margin:0;padding:12px 18px;border-radius:16px;transform:translate(-50%,-50%);font-size:14px;line-height:1.45;color:#fff;text-align:center}
 .reel-note:empty{display:none}
-.reel-rail{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:calc(26px + env(safe-area-inset-bottom));z-index:3;display:flex;flex-direction:column;align-items:center;gap:12px}
+.reel-rail{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:calc(var(--reel-clear) + 18px);z-index:3;display:flex;flex-direction:column;align-items:center;gap:12px}
 .reel-step[data-reel=prev] svg{transform:rotate(180deg)}
 /* On touch the arrows are for screen readers only; a swipe does their job. */
 @media(hover:none),(pointer:coarse){.reel-step{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
@@ -267,8 +269,65 @@ body:has(.reel){overflow:hidden}
   .reel-top{padding:24px 4% 0}
   .reel-rail{right:4%;bottom:64px}
 }
+/* A reel with nothing to play: calm, centred, with a way to Settings and a way home. */
+section.reel-empty{display:grid;place-items:center;background:radial-gradient(ellipse at 50% 30%,rgba(255,255,255,.07),transparent 60%),var(--canvas)}
+.reel-empty .empty-list{padding:0 24px var(--reel-clear)}
+.reel-empty h1{font:600 26px/1.15 DM,Arabic,sans-serif;letter-spacing:-.02em;margin:0}
+.reel-empty p{max-width:34ch;color:var(--muted);line-height:1.5}
+.empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:14px}
+.reel-empty .primary,.reel-empty .secondary{margin:0;width:auto;min-height:48px;padding:0 22px;font-size:15px}
+.reel-empty .primary svg,.reel-empty .secondary svg{width:20px;height:20px}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{background:rgba(24,26,33,.92)}}
 @media(prefers-reduced-transparency:reduce){.reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{background:#1c1f26;-webkit-backdrop-filter:none;backdrop-filter:none}}
+
+/* Settings: a page of short rows in frosted groups, Apple Settings calm. Labels read left, controls sit right. */
+.settings-page{max-width:680px;margin:0 auto;padding:calc(var(--bar-h) + env(safe-area-inset-top) + 8px) max(16px,env(safe-area-inset-right)) calc(var(--tab-h) + env(safe-area-inset-bottom) + 48px) max(16px,env(safe-area-inset-left))}
+.screen.settings,.screen.settings-solo{max-width:none;padding:0}
+.settings-solo .settings-page{padding-top:max(20px,env(safe-area-inset-top))}
+.settings-head{display:flex;align-items:center;gap:12px;margin:8px 4px 24px}
+.settings-head h1{font:600 34px/1.1 DM,Arabic,sans-serif;letter-spacing:-.03em;margin:0}
+.set-group{margin:0 0 26px}
+.set-label{margin:0 16px 9px;font:600 12px/1 DM,Arabic,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.set-card{overflow:hidden;border:1px solid var(--glass-line);border-radius:18px;background:rgba(255,255,255,.065);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge)}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:56px;margin:0;padding:8px 16px;border:0;border-top:1px solid rgba(255,255,255,.08);background:transparent;color:#fff;font-size:16px;text-align:start}
+.set-card>.set-row:first-child{border-top:0}
+.set-stack{flex-direction:column;align-items:stretch;gap:12px;padding:14px 16px 16px}
+.set-text{display:grid;gap:3px;min-width:0}
+.set-name{font-weight:600;line-height:1.3}
+.set-note,.set-foot{font-size:13px;line-height:1.4;color:var(--muted)}
+.set-foot{margin:0;padding:0 16px 12px}.set-foot:empty{display:none}
+.set-status{color:var(--error)}
+.set-value{margin-inline-start:auto;color:var(--muted);text-align:end;font-variant-numeric:tabular-nums}
+label.set-row,.set-link{cursor:pointer}
+.set-link{transition:background .25s}
+.set-link:hover{background:rgba(255,255,255,.06)}
+.set-link:focus-visible,.set-chip:focus-visible{outline:2px solid #fff;outline-offset:-4px;border-radius:18px}
+.set-link>svg{flex:0 0 18px;width:18px;height:18px;opacity:.55}
+.set-danger .set-name{color:#ff9a8f}
+.set-row .switch{margin:0;flex:0 0 auto;min-height:44px}
+/* Segmented choice: real radio buttons, drawn as one capsule with a white pill on the choice. */
+.segmented{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;padding:3px;border:1px solid var(--glass-line);border-radius:999px;background:rgba(0,0,0,.25)}
+.segmented label{position:relative;display:grid;place-items:center;min-height:44px;padding:0 10px;border-radius:999px;color:rgba(255,255,255,.82);font-size:14.5px;font-weight:600;text-align:center;cursor:pointer;transition:background .3s var(--ease),color .3s}
+.segmented input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:inherit}
+.segmented label:hover{color:#fff}
+.segmented label:has(input:checked){background:#fff;color:#05060a;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+.segmented label:has(input:focus-visible){outline:2px solid #fff;outline-offset:2px}
+.segmented label:has(input:disabled){opacity:.5;cursor:default}
+.set-chips{display:flex;flex-wrap:wrap;gap:8px}
+@media(max-width:560px){.set-chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.set-chip{justify-content:center;padding:0 8px}}
+/* The gear is lit like a tab while Settings is open. */
+.header-actions .settings-button[aria-current=page]{background:#fff;border-color:#fff;color:#05060a}
+.set-chip{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 16px 0 12px;border:1px solid var(--glass-line);border-radius:999px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);font-size:14.5px;font-weight:600;transition:background .3s var(--ease),color .3s,border-color .3s}
+.set-chip svg{width:18px;height:18px}
+.set-chip small{font-size:12.5px;opacity:.62;font-variant-numeric:tabular-nums}
+.set-chip:hover{background:rgba(255,255,255,.16)}
+.set-chip[aria-pressed=true]{background:#fff;border-color:#fff;color:#05060a}
+.set-chip.pop{animation:nudge .4s var(--ease)}
+@keyframes nudge{30%{transform:translateX(-4px)}60%{transform:translateX(3px)}}
+.list-back{margin-inline-end:4px}
+.list-view .results-head{justify-content:flex-start}
+@media(min-width:900px){.settings-page{padding-top:calc(var(--bar-h) + 40px);padding-bottom:64px}.settings-head h1{font-size:42px}}
+@media(prefers-reduced-transparency:reduce){.set-card{background:#14161d;-webkit-backdrop-filter:none;backdrop-filter:none}}
 
 /* Autoplay previews switch in Settings */
 .switch{display:flex;align-items:center;gap:14px;min-height:44px;margin-bottom:6px;cursor:pointer}

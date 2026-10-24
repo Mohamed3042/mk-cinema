@@ -105,11 +105,6 @@ body:has(dialog[open]){overflow:hidden}
 .detail-body .shelf{margin-top:28px;margin-bottom:0}.detail-body .shelf-heading{padding:0}.detail-body .card-track{padding-left:0;padding-right:0;scroll-padding:0}.detail-body .card{flex-basis:76%}
 .library footer{padding:16px 24px;font-size:12px;text-align:left;color:var(--muted)}
 .library .state-icon{color:rgba(255,255,255,.85)}
-#settings{width:min(440px,calc(100% - 32px));padding:24px;border:1px solid var(--glass-line);border-radius:20px;background:var(--panel);-webkit-backdrop-filter:blur(30px) saturate(160%);backdrop-filter:blur(30px) saturate(160%);box-shadow:0 30px 90px rgba(0,0,0,.6);color:#fff}
-#settings h2{font-family:DM,Arabic,sans-serif;font-weight:600;font-size:22px;letter-spacing:-.02em}
-#settings .icon-button{border:1px solid var(--glass-line);border-radius:50%;background:var(--glass)}
-#settings .secondary{border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.12);color:#fff}
-#settings .secondary:hover{background:rgba(255,255,255,.2)}
 /* The player stays plain black: the film is the only light. */
 .player{background:#000}
 .player-header h1{font-family:DM,Arabic,sans-serif;font-weight:600;letter-spacing:-.02em}

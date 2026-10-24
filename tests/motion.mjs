@@ -65,10 +65,11 @@ async function showRow(page, row = ROW) {
 }
 
 try {
-  await record('desktop tabs: six tabs, 250 ms crossfade, moving ink, content per tab', async () => {
+  await record('desktop tabs: seven tabs, 250 ms crossfade, moving ink, content per tab', async () => {
     const { context, page } = await session();
     await loaded(page);
-    assert.deepEqual(await page.locator('.tabs .tab').allInnerTexts(), ['Home', 'New & Hot', 'Films', 'Ads', 'Demos', 'My List']);
+    assert.deepEqual(await page.locator('.tabs .tab').allInnerTexts(), ['Home', 'New & Hot', 'Films', 'Ads', 'Demos', 'Reels', 'My List']);
+    assert.equal(await page.locator('[data-action=shuffle]').count(), 0, 'the Reels tab replaces the Shuffle capsule');
     assert.equal(await page.locator('.tab[aria-current=page]').innerText(), 'Home');
     assert.equal(await page.locator('#tabbar').isVisible(), false, 'The bottom bar is for phones');
     assert.ok(await page.locator('[data-action=search]').count() === 1 && await page.getByRole('button', { name: 'Settings', exact: true }).count() === 1, 'Search and settings sit in the top bar');
@@ -121,8 +122,9 @@ try {
     const { context, page } = await session({ viewport: PHONE, phone: true });
     await loaded(page);
     const bar = page.locator('#tabbar');
-    assert.deepEqual(await bar.locator('button').allInnerTexts(), ['Home', 'New & Hot', 'Search', 'My List']);
-    assert.equal(await bar.locator('button svg').count(), 4, 'Every tab has an icon');
+    assert.deepEqual(await bar.locator('button').allInnerTexts(), ['Home', 'New & Hot', 'Reels', 'Search', 'Settings']);
+    assert.equal(await bar.locator('button svg').count(), 5, 'Every tab has an icon');
+    assert.equal(await page.locator('#topbar button').count(), 1, 'the phone top bar is only the brand: Settings is a tab now');
     assert.equal(await page.locator('.tabs').count(), 0, 'The desktop tabs are not on a phone');
     const rect = await box(page, '#tabbar');
     assert.ok(Math.abs(rect.bottom - (844 - 10)) < 1 && Math.abs(rect.width - (390 - 28)) < 1, 'A capsule floating 10 px over the bottom edge, 14 px in from the sides');
@@ -133,8 +135,14 @@ try {
     await bar.getByRole('button', { name: 'New & Hot' }).click();
     await page.locator('main[data-tab=new] .hot-item').first().waitFor();
     assert.equal(await bar.locator('[aria-current=page]').innerText(), 'New & Hot');
-    await bar.getByRole('button', { name: 'My List' }).click();
+    await bar.getByRole('button', { name: 'Settings' }).click();
+    await page.locator('main.settings .settings-page').waitFor();
+    assert.equal(await bar.locator('[aria-current=page]').innerText(), 'Settings');
+    await page.getByRole('button', { name: /^Open My List/ }).click();
     await page.locator('main[data-tab=list] .empty-list').waitFor();
+    assert.equal(await bar.locator('[aria-current=page]').innerText(), 'Settings', 'My List has no phone tab; Settings stays lit');
+    await page.getByRole('button', { name: 'Back to Settings' }).click();
+    await page.locator('main.settings .settings-page').waitFor();
     await bar.getByRole('button', { name: 'Search' }).click();
     await page.locator('#film-search').waitFor();
     assert.ok(await page.locator('#film-search').evaluate(el => document.activeElement === el), 'Search opens with the keyboard ready');
@@ -189,10 +197,19 @@ try {
     assert.equal(await page.locator('#film-detail .list-toggle').getAttribute('aria-pressed'), 'true');
     await page.touchscreen.tap(195, 40);
     await page.locator('#film-detail').waitFor({ state: 'detached' });
-    await page.locator('#tabbar').getByRole('button', { name: 'My List' }).tap();
+    const listRow = page.locator('.shelf[data-row="My List"]');
+    await listRow.waitFor();
+    assert.equal(await listRow.locator('.film-card').count(), 1, 'the My List row on Home shows the film at once');
+    await page.locator('#tabbar').getByRole('button', { name: 'Settings' }).tap();
+    assert.match(await page.getByRole('button', { name: /^Open My List/ }).innerText(), /1 title$/, 'Settings counts the saved titles');
+    await page.getByRole('button', { name: /^Open My List/ }).tap();
     await page.locator('main[data-tab=list] .results-grid .film-card').waitFor();
     assert.equal(await page.locator('main[data-tab=list] .results-grid .film-card').count(), 1);
     await shot(page, 'my-list');
+    await page.getByRole('button', { name: 'Back to Settings' }).tap();
+    await page.locator('main.settings').waitFor();
+    await page.locator('#tabbar').getByRole('button', { name: 'Home' }).tap();
+    await page.locator('.shelf[data-row="My List"] .film-card').first().waitFor();
     await context.close();
   });
 
@@ -456,13 +473,16 @@ try {
     await loaded(page);
     await waitState(page, 'playing');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    const toggle = page.locator('#autoplay-toggle');
+    await page.locator('main.settings').waitFor();
+    assert.equal(await page.locator('#topbar [data-nav=settings]').getAttribute('aria-current'), 'page', 'the gear is lit while Settings is open');
+    const toggle = page.getByRole('switch', { name: 'Autoplay previews', exact: true });
     assert.equal(await toggle.isChecked(), true, 'On by default');
-    assert.equal(await toggle.getAttribute('role'), 'switch');
     await toggle.click();
-    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.autoplay')), '0');
-    await page.getByRole('button', { name: 'Close settings' }).click();
-    await waitState(page, 'off', 2000);
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('mkc.settings'))).autoplay, false);
+    await page.locator('.tab[data-tab=home]').click();
+    await page.locator('main[data-tab=home] .billboard').waitFor();
+    await page.waitForTimeout(2800);
+    assert.equal(await billboardState(page), 'off');
     assert.equal(await page.locator('.billboard-video').evaluate(el => el.hasAttribute('src')), false, 'The film is gone, the poster stays');
     await showRow(page);
     await hoverCard(page, 1);
@@ -477,7 +497,7 @@ try {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     assert.equal(await page.locator('#autoplay-toggle').isChecked(), false);
     await page.locator('#autoplay-toggle').click();
-    await page.getByRole('button', { name: 'Close settings' }).click();
+    await page.locator('.tab[data-tab=home]').click();
     await waitState(page, 'playing', 8000);
     await context.close();
   });
@@ -511,7 +531,7 @@ try {
     await page.locator('#film-detail').waitFor({ state: 'detached' });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     assert.equal(await page.locator('#autoplay-toggle').isDisabled(), true, 'The switch explains that reduced motion wins');
-    assert.match(await page.locator('#autoplay-note').innerText(), /reduced motion/);
+    assert.match(await page.locator('#autoplay-toggle-note').innerText(), /reduced motion/);
     await context.close();
     const phone = await session({ viewport: PHONE, reduced: true, phone: true });
     await loaded(phone.page);
@@ -749,7 +769,7 @@ try {
     const phone = await session({ viewport: PHONE, phone: true, extra: { reducedMotion: 'reduce' } });
     await loaded(phone.page);
     const rows = await phone.page.locator('#tabbar button').evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; }));
-    assert.deepEqual(rows, [true, true, true, true], 'Tab bar buttons are full-size tap targets');
+    assert.deepEqual(rows, [true, true, true, true, true], 'Tab bar buttons are full-size tap targets');
     assert.equal(await phone.page.locator('#tabbar button[aria-current=page]').count(), 1);
     await phone.context.close();
     await context.close();
@@ -793,18 +813,25 @@ try {
   const reelCount = page => page.locator('.reel-count b').textContent();
   const reelLive = page => page.locator('.reel-item.is-active.is-live').waitFor({ timeout: 12000 });
   const titleCount = new Set(catalog.films.map(f => f.group || f.id)).size;
-  await record('Shuffle: the whole cinema plays as a reel, one film a screen; keys, pause, sound and the end move it on', async () => {
+  const openReels = async (page, phone = false) => {
+    if (phone) await page.locator('#tabbar [data-tab=reels]').tap(); else await page.locator('.tab[data-tab=reels]').click();
+    await page.locator('main.reel').waitFor();
+  };
+  const setPrefs = (page, prefs) => page.evaluate(value => localStorage.setItem('mkc.settings', JSON.stringify(value)), prefs);
+  await record('Reels: the tab plays the cinema as a reel under the top bar, with sound; keys, pause, mute and the end move it on', async () => {
     const { context, page } = await session();
     await loaded(page);
-    await page.locator('[data-action=shuffle]').click();
-    await page.locator('main.reel').waitFor();
-    assert.equal(await page.locator('#topbar').isHidden(), true, 'the reel is full screen');
+    await openReels(page);
+    assert.equal(await page.locator('.tab[data-tab=reels]').getAttribute('aria-current'), 'page');
+    const bar = await box(page, '#topbar'), reel = await box(page, 'section.reel');
+    assert.ok(Math.abs(reel.top - bar.bottom) < 1 && Math.abs(reel.bottom - 900) < 1, `the reel fills the area under the top bar (${reel.top}-${reel.bottom}, bar ${bar.bottom})`);
+    assert.equal(await page.locator('#topbar').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(5, 6, 10, 0.72)', 'the bar is frosted ink over the reel');
     const films = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
     assert.equal(films.length, titleCount, 'every title once');
     assert.equal(new Set(films).size, titleCount, 'no title twice');
     await reelLive(page);
     assert.equal(await reelCount(page), `1 / ${titleCount}`);
-    assert.ok(await page.locator('.reel-video').evaluate(video => video.src.startsWith('blob:') && !video.paused && video.closest('.reel-item').classList.contains('is-active')), 'the first film plays inside its own screen');
+    assert.ok(await page.locator('.reel-video').evaluate(video => video.src.startsWith('blob:') && !video.paused && !video.muted && video.closest('.reel-item').classList.contains('is-active')), 'the first film plays with sound inside its own screen');
     await page.keyboard.press('ArrowDown');
     await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '));
     await reelLive(page);
@@ -812,6 +839,8 @@ try {
     await page.keyboard.press('ArrowUp');
     await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('1 '));
     await reelLive(page);
+    for (let n = 0; n < 4; n++) await page.keyboard.press('Tab'); // My List, search, settings, then the reel
+    assert.equal(await page.evaluate(() => document.activeElement.className), 'reel-track', 'the reel is the next stop for the keyboard after the bar');
     await page.keyboard.press(' ');
     assert.ok(await page.locator('.reel-video').evaluate(video => video.paused), 'Space pauses');
     assert.equal(await page.locator('.reel.is-paused').count(), 1, 'the glass play sign shows');
@@ -825,19 +854,59 @@ try {
     assert.ok(await page.locator('.reel-video').evaluate(video => video.muted), 'the sound choice carries to the next film');
     const tiny = await page.locator('.reel button').evaluateAll(nodes => nodes.filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.width < 43 || r.height < 43); }).length);
     assert.equal(tiny, 0, 'reel controls keep 44 px targets');
-    await page.keyboard.press('Escape');
-    await page.locator('main.library').waitFor();
-    assert.equal(await page.locator('.reel-video').count(), 0, 'closing leaves no video behind');
+    await page.locator('.tab[data-tab=home]').click();
+    await page.locator('main.library[data-tab=home]').waitFor();
+    assert.equal(await page.locator('.reel-video').count(), 0, 'leaving leaves no reel video behind');
     await context.close();
   });
 
-  await record('Shuffle on a phone: a swipe moves on, a 9:16 cut fills the screen, and the reel never runs out', async () => {
+  await record('Reels: leaving pauses and releases the film; coming back in the same visit resumes it where it was', async () => {
+    const { context, page } = await session();
+    await loaded(page);
+    await openReels(page);
+    await reelLive(page);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '));
+    await reelLive(page);
+    const film = await page.locator('.reel-item.is-active').getAttribute('data-film');
+    const order = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
+    await page.locator('.reel-video').evaluate(video => { video.pause(); video.currentTime = 6; });
+    await page.waitForFunction(() => Math.abs(document.querySelector('.reel-video').currentTime - 6) < 0.1);
+    await page.locator('.tab[data-tab=new]').click();
+    await page.locator('main[data-tab=new]').waitFor();
+    assert.equal(await page.locator('.reel-video').count(), 0, 'the reel film is released');
+    await openReels(page);
+    assert.deepEqual(await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film)), order, 'the same films in the same order');
+    await reelLive(page);
+    assert.equal(await page.locator('.reel-item.is-active').getAttribute('data-film'), film, 'on the same film');
+    assert.equal(await reelCount(page), `2 / ${titleCount}`);
+    const time = await page.locator('.reel-video').evaluate(video => video.currentTime);
+    assert.ok(time >= 5.9 && time < 9, `at the same time (${time.toFixed(2)} s)`);
+    // A change in Settings starts a fresh reel in the new order.
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('radio', { name: 'Newest first' }).check();
+    await openReels(page);
+    await reelLive(page);
+    assert.equal(await reelCount(page), `1 / ${titleCount}`, 'a new order starts from the first film');
+    await context.close();
+  });
+
+  await record('Reels on a phone: the tab bar stays and covers nothing; a swipe moves on, a 9:16 cut fills the screen, the reel never runs out', async () => {
     const { context, page } = await session({ viewport: PHONE, phone: true });
     await loaded(page);
-    await page.locator('#topbar [data-action=shuffle]').tap();
+    await openReels(page, true);
     await reelLive(page);
+    assert.equal(await page.locator('#tabbar').isVisible(), true, 'the tab bar stays');
+    assert.equal(await page.locator('#topbar').isHidden(), true, 'no top bar over the film');
+    assert.equal(await page.locator('#tabbar [aria-current=page]').innerText(), 'Reels');
+    const barTop = (await box(page, '#tabbar')).top;
+    const covered = await page.locator('.reel-item.is-active .reel-copy > *, .reel-rail button:not(.reel-step), .reel-item.is-active .reel-progress').evaluateAll((nodes, top) => nodes.filter(el => el.getBoundingClientRect().bottom > top - 4).map(el => el.className || el.tagName), barTop);
+    assert.deepEqual(covered, [], 'titles, controls and the progress line all sit above the tab bar');
     const active = await page.locator('.reel-item.is-active').evaluate(item => ({ shape: item.dataset.shape, fit: getComputedStyle(item.querySelector('.reel-video')).objectFit }));
     assert.equal(active.fit, active.shape === 'phone' ? 'cover' : 'contain', 'a phone cut fills the portrait screen; a wide one is shown whole');
+    await page.touchscreen.tap(195, 420);
+    assert.equal(await page.locator('.reel.is-paused').count(), 1, 'a tap on the film pauses it');
+    await page.touchscreen.tap(195, 420);
     for (let n = 2; n <= titleCount - 1; n++) {
       await page.locator('.reel-track').evaluate(track => track.scrollBy({ top: track.clientHeight }));
       await page.waitForFunction(wanted => document.querySelector('.reel-count b').textContent.startsWith(`${wanted} `), n);
@@ -845,29 +914,108 @@ try {
     const all = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
     assert.equal(all.length, titleCount * 2, 'a second round was drawn before the first ran out');
     assert.notEqual(all[titleCount], all[titleCount - 1], 'the new round does not repeat the film that just played');
-    await page.locator('[data-reel=close]').tap();
-    await page.locator('main.library').waitFor();
+    await shot(page, 'reels');
+    await page.locator('#tabbar [data-tab=home]').tap();
+    await page.locator('main.library[data-tab=home]').waitFor();
     await context.close();
   });
 
-  await record('Shuffle with reduced motion: a film that ends waits instead of moving on', async () => {
+  await record('Reels with reduced motion: a film that ends waits instead of moving on', async () => {
     const { context, page } = await session({ reduced: true });
     await loaded(page);
-    await page.locator('[data-action=shuffle]').click();
+    await openReels(page);
     await reelLive(page);
     await page.locator('.reel-video').evaluate(video => { video.currentTime = Math.max(0, video.duration - 0.3); });
     await page.locator('.reel-item.is-active.is-ended').waitFor({ timeout: 8000 });
     assert.equal(await reelCount(page), `1 / ${titleCount}`, 'still on the first film');
     await page.keyboard.press('ArrowDown');
     await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '));
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    assert.equal(await page.getByRole('radio', { name: 'Play the next' }).isDisabled(), true, 'Settings shows that films wait under reduced motion');
+    assert.match(await page.locator('#reel-end-note').innerText(), /reduced motion/);
     await context.close();
   });
 
-  await record('Shuffle: films that cannot play move on, three in a row stop the reel, and closing returns focus', async () => {
+  await record('Settings: When a film ends: Wait keeps the film on screen; a tap plays it again', async () => {
+    const { context, page } = await session();
+    await loaded(page);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('radio', { name: 'Wait' }).check();
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('mkc.settings'))).reelEnd, 'wait');
+    await openReels(page);
+    await reelLive(page);
+    await page.locator('.reel-video').evaluate(video => { video.currentTime = Math.max(0, video.duration - 0.3); });
+    await page.locator('.reel-item.is-active.is-ended').waitFor({ timeout: 8000 });
+    await page.waitForTimeout(1500);
+    assert.equal(await reelCount(page), `1 / ${titleCount}`, 'still on the first film');
+    await page.mouse.click(700, 450);
+    await page.waitForFunction(() => { const video = document.querySelector('.reel-video'); return !video.paused && video.currentTime < 3; });
+    assert.equal(await page.locator('.reel-item.is-active.is-ended').count(), 0, 'it plays again from the start');
+    await context.close();
+  });
+
+  await record('Settings: Which titles, Order and Start with sound change what Reels plays, and are remembered', async () => {
+    const { context, page } = await session();
+    await loaded(page);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.locator('main.settings').waitFor();
+    const films = page.locator('[data-reel-kind=films]'), ads = page.locator('[data-reel-kind=ads]'), demos = page.locator('[data-reel-kind=demos]');
+    assert.deepEqual(await page.locator('[data-reel-kind]').evaluateAll(chips => chips.map(chip => chip.getAttribute('aria-pressed'))), ['true', 'true', 'true'], 'all kinds on by default');
+    assert.match(await films.getAttribute('aria-label'), /^Films, \d+ titles?$/);
+    await films.click(); await ads.click();
+    assert.equal(await demos.getAttribute('aria-pressed'), 'true');
+    await demos.click();
+    assert.equal(await demos.getAttribute('aria-pressed'), 'true', 'the last kind stays on');
+    assert.equal(await page.locator('#announce').innerText(), 'Reels keep at least one kind on.');
+    await page.getByRole('switch', { name: 'Start with sound', exact: true }).click();
+    await page.reload();
+    await page.locator('main.library').waitFor();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    assert.equal(await page.locator('[data-reel-kind=films]').getAttribute('aria-pressed'), 'false', 'remembered after a reload');
+    assert.equal(await page.getByRole('switch', { name: 'Start with sound', exact: true }).isChecked(), false);
+    await openReels(page);
+    await reelLive(page);
+    const kinds = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
+    const demoIds = catalog.films.filter(f => f.kind === 'demo').map(f => f.id);
+    assert.ok(kinds.length && kinds.every(id => demoIds.includes(id)), 'only demos play');
+    assert.ok(await page.locator('.reel-video').evaluate(video => video.muted), 'Start with sound off: the reel starts muted');
+    assert.equal(await page.locator('[data-reel=sound]').getAttribute('aria-label'), 'Turn sound on');
+    assert.equal(await page.locator('.reel.is-quiet').count(), 0, 'no "Tap for sound" nag when the owner chose quiet');
+    // Order: Newest first follows the catalog dates, every kind back on.
+    await setPrefs(page, { reelOrder: 'newest' });
+    await page.reload();
+    await page.locator('main.library').waitFor();
+    await openReels(page);
+    const seen = new Set(), newest = catalog.films.toSorted((a, b) => b.added.localeCompare(a.added)).filter(f => !seen.has(f.group || f.id) && seen.add(f.group || f.id)).map(f => f.id);
+    assert.deepEqual(await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film)), newest, 'newest first');
+    assert.equal(await page.locator('.reel-count').getAttribute('title'), 'Newest first');
+    await context.close();
+  });
+
+  await record('Reels with nothing to play: a calm empty state with a way to Settings and a way home', async () => {
+    const { context, page } = await session();
+    await page.route('**/demo/cinema.json', route => route.fulfill({ json: { ...catalog, films: catalog.films.filter(f => f.kind !== 'demo') } }));
+    await page.goto(`${origin}/?demo`);
+    await setPrefs(page, { reelKinds: ['demos'] });
+    await page.reload();
+    await page.locator('main.library').waitFor();
+    await openReels(page);
+    await page.locator('.reel-empty').waitFor();
+    assert.match(await page.locator('.reel-empty h1').innerText(), /Nothing to play/);
+    assert.equal(await page.locator('.reel-video').count(), 0);
+    await page.getByRole('button', { name: 'Open Settings' }).click();
+    await page.locator('main.settings').waitFor();
+    await openReels(page);
+    await page.getByRole('button', { name: 'Browse everything' }).click();
+    await page.locator('main.library[data-tab=home]').waitFor();
+    await context.close();
+  });
+
+  await record('Reels: films that cannot play move on, three in a row stop the reel, and focus stays on the tab', async () => {
     const { context, page } = await session();
     await loaded(page);
     await page.route('**/demo/*.mp4', route => route.fulfill({ status: 200, body: 'not a film', contentType: 'video/mp4' })); // a file the browser cannot decode
-    await page.locator('[data-action=shuffle]').click();
+    await openReels(page);
     await page.locator('.reel-item.is-active.is-failed').waitFor({ timeout: 8000 });
     assert.match(await page.locator('.reel-note').textContent(), /cannot play here/);
     await page.waitForFunction(() => /not playing right now/.test(document.querySelector('.reel-note').textContent), null, { timeout: 15000 });
@@ -875,9 +1023,37 @@ try {
     assert.equal(stopped, `3 / ${titleCount}`, 'the third failure in a row stops the reel');
     await page.waitForTimeout(3200);
     assert.equal(await reelCount(page), stopped, 'and it stays stopped');
-    await page.keyboard.press('Escape');
-    await page.locator('main.library').waitFor();
-    assert.equal(await page.evaluate(() => document.activeElement?.dataset.action), 'shuffle', 'focus goes back to Shuffle');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.tab), 'reels', 'focus stays on the Reels tab');
+    await context.close();
+  });
+
+  await record('Settings: a page of real controls with labels, focus and the token flow; reachable from Connect too', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await loaded(page);
+    await page.locator('#tabbar [data-tab=settings]').tap();
+    await page.locator('main.settings').waitFor();
+    assert.deepEqual(await page.locator('.set-label').allInnerTexts(), ['PLAYBACK', 'REELS', 'MY LIST', 'CONNECTION', 'ABOUT']);
+    assert.equal(await page.getByRole('radiogroup', { name: 'Order' }).count(), 1);
+    assert.equal(await page.getByRole('radiogroup', { name: 'When a film ends' }).count(), 1);
+    assert.equal(await page.getByRole('group', { name: 'Which titles' }).count(), 1);
+    assert.match(await page.locator('.set-value').allInnerTexts().then(values => values.join(' | ')), /Demo, no token used.*7.*Demo/);
+    const tiny = await page.locator('.settings-page button, .settings-page .segmented label, .settings-page .switch input').evaluateAll(nodes => nodes.filter(el => { const r = el.getBoundingClientRect(); return r.height < 44; }).length);
+    assert.equal(tiny, 0, 'every control is a 44 pt target');
+    await page.getByRole('radio', { name: 'Shuffle' }).focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.getByRole('radio', { name: 'Newest first' }).isChecked(), true, 'arrow keys move the choice');
+    assert.notEqual(await page.locator('.segmented label:has(input:focus-visible)').evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'the focused choice shows a ring');
+    const barTop = (await box(page, '#tabbar')).top;
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    assert.ok((await box(page, '.set-group:last-child .set-card')).bottom < barTop, 'the last group scrolls clear of the tab bar');
+    await shot(page, 'settings');
+    await page.goto(`${origin}/?demo&state=connect`);
+    await page.locator('main.connect').waitFor();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.locator('main.settings-solo').waitFor();
+    assert.equal(await page.locator('#tabbar').isHidden(), true, 'no tabs without a library');
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.locator('main.connect').waitFor();
     await context.close();
   });
 
@@ -886,9 +1062,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v7'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js']) assert.ok(cached['mkc-shell-v7'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v7'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v8'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js']) assert.ok(cached['mkc-shell-v8'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v8'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
+    assert.equal(await page.locator('#shell-version').innerText(), 'v8 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 } finally {

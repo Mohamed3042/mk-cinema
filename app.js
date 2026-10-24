@@ -1,6 +1,6 @@
 import { CinemaError, getCatalog, getPoster, getVideoURL, downloadVideo, forgetPosters } from './api.js';
 import { PRODUCTS, groupFilms, filterFilms, readProgress, saveProgress, continueFilms, readList, saveList, inList, toggleList, listGroups, splitTitle, kindLabel } from './catalog.js';
-import { MAX_WHOLE_BYTES, claimPreview, reduced, onReducedChange, readAutoplay, writeAutoplay } from './motion.js';
+import { MAX_WHOLE_BYTES, claimPreview, reduced, onReducedChange } from './motion.js';
 import { startPreview } from './previews.js';
 import { mountBillboard } from './billboard.js';
 import { mountRows } from './rows.js';
@@ -8,12 +8,12 @@ import { mountFeed } from './feed.js';
 import { createBob } from './bob.js';
 import { openSheet, closeSheet, enableDrag } from './modal.js';
 import { mountAmbient, paleness } from './ambient.js';
-import { shuffleDeck, mountReel } from './reel.js';
+import { mountReel } from './reel.js';
+import { KINDS, readSettings, writeSettings, toggleKind, reelKinds, reelDeck, nextRound } from './settings.js';
 
 const main = document.querySelector('main');
 const topbar = document.querySelector('#topbar');
 const tabbar = document.querySelector('#tabbar');
-const settings = document.querySelector('#settings');
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
 let token = '';
@@ -26,18 +26,21 @@ let storage;
 try { storage = localStorage; } catch { /* Watching also works with storage blocked. */ }
 const progressKey = demo ? 'mkc.demo.progress' : 'mkc.progress';
 const listKey = demo ? 'mkc.demo.list' : 'mkc.list';
-let listIds = readList(storage, listKey), autoplay = readAutoplay(storage);
+let listIds = readList(storage, listKey), prefs = readSettings(storage), listFrom = null, restore = null, reelResume = null;
 const desktopQuery = matchMedia('(min-width: 900px)');
 const filters = ['All', 'MK Voice', 'Business OS', 'Talent Atlas', 'Job Orbit', 'Suite & apps', 'More', 'Ads', 'Demos', 'Arabic'];
-const TABS = [['home', 'Home'], ['new', 'New & Hot'], ['films', 'Films'], ['ads', 'Ads'], ['demos', 'Demos'], ['list', 'My List']];
-const PHONE_TABS = [['home', 'Home', 'home'], ['new', 'New & Hot', 'flame'], ['search', 'Search', 'search'], ['list', 'My List', 'list']];
+const TABS = [['home', 'Home'], ['new', 'New & Hot'], ['films', 'Films'], ['ads', 'Ads'], ['demos', 'Demos'], ['reels', 'Reels'], ['list', 'My List']];
+const PHONE_TABS = [['home', 'Home', 'home'], ['new', 'New & Hot', 'flame'], ['reels', 'Reels', 'reels'], ['search', 'Search', 'search'], ['settings', 'Settings', 'settings']];
+// Screens that live under the tab bars. Reels and Settings are tabs; a detail sheet opens over a library tab.
+const TABBED = ['library', 'reel', 'settings'];
+const KIND_NAMES = { films: 'Films', ads: 'Ads', demos: 'Demos' };
 const kindTabs = { films: ['Films', 'FILMS'], ads: ['Ads', 'ADS & LOOPS'], demos: ['Demos', 'DEMOS'] };
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const duration = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const kindName = kind => kind === 'phone' ? 'Phone' : 'Desktop';
 const isNew = f => { const time = Date.parse(f.added); return time >= Date.now() - 7 * 86400000 && time <= Date.now(); };
 const formatDate = value => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.parse(value));
-const motionOn = () => autoplay && !reduced();
+const motionOn = () => prefs.autoplay && !reduced();
 const iconPaths = {
   search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>',
   back: '<path d="m15 4-8 8 8 8"/>', play: '<path d="m8 4 12 8-12 8Z" fill="currentColor" stroke="none"/>',
@@ -52,6 +55,7 @@ const iconPaths = {
   home: '<path d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M10 20v-5h4v5"/>', flame: '<path d="M12 3c.4 3 3.2 4.6 4.4 7A6.5 6.5 0 1 1 5.6 14c0-1.9.8-3.4 2-4.5.3 1.3.9 2 1.9 2.4C9.4 8.7 10.2 5.4 12 3Z"/>',
   list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>',
   film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>',
+  reels: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M3.5 8.5h17M8.5 3.5l2.6 5M14 3.5l2.6 5"/><path d="M10.4 12.2v4.6l4-2.3Z" fill="currentColor" stroke="none"/>',
   shuffle: '<path d="M3 7h3.2c1.9 0 3.1.9 4.2 2.5l3.2 5c1.1 1.6 2.3 2.5 4.2 2.5H21M3 17h3.2c1.4 0 2.4-.5 3.3-1.4M14.3 8.4c.9-.9 1.9-1.4 3.3-1.4H21M18 4l3 3-3 3M18 14l3 3-3 3"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconPaths[name] || ''}</svg>`;
@@ -128,8 +132,39 @@ function toggleMyList(id) {
     button.innerHTML = icon(on ? 'check' : 'plus');
     button.classList.remove('pop'); void button.offsetWidth; button.classList.add('pop');
   }
-  if (tab === 'list') { if (screen === 'library') library(); else listDirty = true; }
+  if (tab === 'list' || (tab === 'home' && exploreRow === 'My List')) { if (screen === 'library') library(); else listDirty = true; }
+  else if (tab === 'home' && screen === 'film') listDirty = true;
+  else if (tab === 'home' && screen === 'library') whenBobClosed(refreshListRow);
   return on;
+}
+// The My List row on Home follows the list in place, so the page keeps its scroll, its billboard and its focus.
+// From a hover card it waits until the card has closed: rows never move under the pointer.
+let rowTimer = 0;
+function whenBobClosed(task) {
+  clearInterval(rowTimer);
+  const stamp = revision, run = () => {
+    if (stamp !== revision) clearInterval(rowTimer);
+    else if (!document.querySelector('.bob')) { clearInterval(rowTimer); task(); }
+  };
+  rowTimer = setInterval(run, 200); run();
+}
+function refreshListRow() {
+  const shelves = main.querySelector('.shelves');
+  if (!shelves) return;
+  const items = listGroups(groupsOf(), listIds), old = shelves.querySelector('.shelf[data-row="My List"]');
+  const before = shelves.querySelector('.shelf[data-row="Continue watching"]'), html = shelf('My List', items, readProgress(storage, progressKey));
+  // The row being watched stays where it is when My List appears, grows or goes above it: the first row in the
+  // upper part of the screen is the anchor. At the very top the billboard stays and the rows below move instead.
+  const anchor = scrollY > 0 && [...shelves.children].find(row => row !== old && row.getBoundingClientRect().bottom > topbar.getBoundingClientRect().bottom && row.getBoundingClientRect().top < innerHeight * 0.75);
+  const top = anchor && anchor.getBoundingClientRect().top;
+  if (old && html) old.outerHTML = html;
+  else if (old) old.remove();
+  else if (html && before) before.insertAdjacentHTML('afterend', html);
+  else if (html) shelves.insertAdjacentHTML('afterbegin', html);
+  rowFilms.set('My List', items);
+  if (anchor) scrollBy(0, anchor.getBoundingClientRect().top - top);
+  live.rows?.destroy(); live.rows = mountRows(main);
+  void fillPosters(revision);
 }
 const listButton = (f, cls = '') => {
   const on = inList(listIds, titleIds(f.id));
@@ -139,17 +174,20 @@ const listButton = (f, cls = '') => {
 // The top bar (desktop) and the bottom tab bar (phone) live outside <main>, so they keep their state and
 // focus while the content under them is swapped.
 function chrome() {
-  const show = screen === 'library' || screen === 'film';
-  topbar.hidden = !show; document.body.classList.toggle('has-chrome', show);
+  const show = Boolean(catalog) && (TABBED.includes(screen) || screen === 'film'), desktop = desktopQuery.matches;
+  // On a phone the reel is the whole screen over the tab bar, TikTok style: no top bar over the film.
+  topbar.hidden = !show || (screen === 'reel' && !desktop);
+  document.body.classList.toggle('has-chrome', show);
+  document.body.classList.toggle('on-reel', show && screen === 'reel');
   if (!show) { tabbar.hidden = true; return; }
-  const desktop = desktopQuery.matches;
   tabbar.hidden = desktop;
   if (chromeKey !== String(desktop)) {
     chromeKey = String(desktop);
-    topbar.innerHTML = `<div class="topbar-row"><button class="brand brand-button" data-tab="home" aria-label="MK Cinema home">${brand}</button>${desktop ? `<nav class="tabs" aria-label="Sections">${TABS.map(([id, label]) => `<button class="tab" data-tab="${id}" data-nav="${id}">${label}</button>`).join('')}<i class="tab-ink" aria-hidden="true"></i></nav>` : ''}<div class="header-actions"><button class="icon-button shuffle-button" data-action="shuffle" aria-label="Shuffle the whole cinema">${icon('shuffle')}<span>Shuffle</span></button>${desktop ? `<button class="icon-button" data-action="search" data-nav="search" aria-label="Search">${icon('search')}</button>` : ''}<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div></div>`;
+    topbar.innerHTML = `<div class="topbar-row"><button class="brand brand-button" data-tab="home" aria-label="MK Cinema home">${brand}</button>${desktop ? `<nav class="tabs" aria-label="Sections">${TABS.map(([id, label]) => `<button class="tab" data-tab="${id}" data-nav="${id}">${label}</button>`).join('')}<i class="tab-ink" aria-hidden="true"></i></nav><div class="header-actions"><button class="icon-button" data-action="search" data-nav="search" aria-label="Search">${icon('search')}</button><button class="icon-button settings-button" data-tab="settings" data-nav="settings" aria-label="Settings">${icon('settings')}</button></div>` : ''}</div>`;
     tabbar.innerHTML = desktop ? '' : PHONE_TABS.map(([id, label, symbol]) => `<button data-nav="${id}" ${id === 'search' ? 'data-action="search"' : `data-tab="${id}"`}>${icon(symbol)}<span>${label}</span></button>`).join('');
   }
-  const current = searching ? 'search' : tab;
+  // My List has no phone tab: opened from Settings, the Settings tab stays lit.
+  const current = searching ? 'search' : tab === 'list' && !desktop ? 'settings' : tab;
   for (const button of document.querySelectorAll('[data-nav]')) {
     if (button.dataset.nav === current) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   }
@@ -169,7 +207,8 @@ function placeInk(instant = false) {
 }
 document.fonts?.addEventListener?.('loadingdone', () => placeInk(true));
 // Transparent over the hero, solid #141414 after 80 px of scroll.
-function paintBar() { topbar.style.setProperty('--bar', Math.min(1, scrollY / 80).toFixed(3)); }
+// Over the reel (desktop) the bar is always frosted ink: there is no hero under it.
+function paintBar() { topbar.style.setProperty('--bar', screen === 'reel' ? '1' : Math.min(1, scrollY / 80).toFixed(3)); }
 addEventListener('scroll', paintBar, { passive: true });
 desktopQuery.addEventListener('change', () => { chromeKey = ''; chrome(); });
 
@@ -187,13 +226,16 @@ function swap(render) {
   });
 }
 function go(next) {
-  if (!catalog || (screen !== 'library')) return;
-  if (next === tab && !searching && !gridMode && !exploreRow && activeFilter === 'All' && !query) { scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); return; }
-  tab = next; activeFilter = 'All'; query = ''; searching = false; gridMode = false; exploreRow = null;
-  swap(library);
+  if (!catalog || !TABBED.includes(screen)) return;
+  if (next === tab && !searching && !gridMode && !exploreRow && activeFilter === 'All' && !query && !listFrom) { scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); return; }
+  tab = next; activeFilter = 'All'; query = ''; searching = false; gridMode = false; exploreRow = null; listFrom = null;
+  // Reels draw at once, without the crossfade: the reel's video must start inside this tap, or an iPhone mutes it.
+  if (next === 'reels') library(); else swap(library);
 }
 
 function stopLive() {
+  // Leaving Reels keeps its place for this visit: the same films in the same order, and the time in the one on screen.
+  if (live.reel) reelResume = { ...live.reel.meta, items: [...main.querySelectorAll('.reel-item')].map(item => ({ id: item.dataset.film, n: Number(item.dataset.n) })), ...live.reel.snapshot() };
   for (const item of Object.values(live)) (item.destroy || item.stop)?.call(item);
   live = {}; bob?.close();
 }
@@ -204,7 +246,7 @@ function mount(next, html, { focus = true } = {}) {
   main.querySelectorAll('video').forEach(video => { video.pause(); video.removeAttribute('src'); video.load(); });
   if (mediaURL?.startsWith('blob:')) URL.revokeObjectURL(mediaURL);
   mediaURL = undefined;
-  screen = next; main.className = `screen ${next}`; main.dataset.tab = next === 'library' ? tab : ''; main.innerHTML = html;
+  screen = next; main.className = `screen ${next}`; main.dataset.tab = TABBED.includes(next) ? tab : ''; main.innerHTML = html;
   chrome();
   if (focus) main.focus({ preventScroll: true });
   window.scrollTo(0, 0);
@@ -242,10 +284,11 @@ async function fillPosters(stamp) {
 }
 function clearPosters() { for (const url of posterURLs.values()) URL.revokeObjectURL(url); posterURLs.clear(); }
 function connect(error = '') {
-  screen = 'connect';
+  screen = 'connect'; restore = () => connect(error);
   mount('connect', `${header()}<section class="connect-content"><h1>Connect GitHub</h1><p>Open your private film library.<br>Paste a read-only token once.</p><form id="connect-form"><label for="token">GitHub token</label><input id="token" type="password" placeholder="Paste token" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="token-help${error ? ' token-error' : ''}" ${error ? 'aria-invalid="true"' : ''}><p id="token-help" class="small">Stored only in this browser.</p>${error ? `<p class="error-copy" id="token-error" role="alert">${icon('alert')}<span>${escape(error)}<br><span class="muted">Paste a new token, then try again.</span></span></p>` : ''}<section class="token-help"><h2>How to make the token</h2><ol><li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Fine-grained token ${icon('arrow')}</a></li><li>Only select repositories:<br><strong>mk-cinema-library</strong></li><li>Contents: Read-only</li></ol></section><button class="primary" type="submit">${error ? 'Retry connection' : 'Connect'}</button></form></section>`);
 }
 function loading() {
+  restore = () => void loadLibrary();
   // The loading skeleton is the home's own shape (billboard, then rows), so the library lands without a jump.
   mount('loading', `${header()}<div class="loading-home" aria-hidden="true"><div class="skeleton loading-hero"><div class="loading-copy"><i></i><i></i><i></i><b></b></div></div>${Array.from({ length: 2 }, () => `<div class="loading-row"><i></i><div>${'<span class="skeleton"></span>'.repeat(4)}</div></div>`).join('')}</div><p class="sr-only" role="status">Loading library…</p>`);
 }
@@ -261,6 +304,8 @@ async function loadLibrary() {
 function library() {
   savedFile = undefined; listDirty = false; // drawing the library shows My List as it is now
   if (!catalog?.films.length) { stateScreen('empty'); return; }
+  if (tab === 'reels') { reelScreen(); return; }
+  if (tab === 'settings') { settingsScreen(); return; }
   const all = groupsOf(), progress = readProgress(storage, progressKey);
   const filterScroll = main.querySelector('.filters')?.scrollLeft || 0;
   screen = 'library';
@@ -283,7 +328,7 @@ function browseView(all, progress) {
   const base = home ? all : filterFilms(all, kindTabs[tab][0]);
   const recent = base.filter(isNew);
   const rows = [
-    ['Continue watching', continueFilms(base, progress)], ['New this week', recent],
+    ['Continue watching', continueFilms(base, progress)], ...(home ? [['My List', listGroups(all, listIds)]] : []), ['New this week', recent],
     ...PRODUCTS.map(product => [product, base.filter(f => f.variants.some(v => v.product === product))]),
     ...(home ? [['Ads & loops', filterFilms(base, 'Ads')], ['Demos', filterFilms(base, 'Demos')]] : []), ['Arabic', filterFilms(base, 'Arabic')],
   ];
@@ -299,40 +344,88 @@ function browseView(all, progress) {
     : `<section class="billboard" aria-label="${home ? 'Newest film' : 'Featured film'}" data-film="${escape(featured.id)}" data-preview="poster">${poster(featured, 'billboard-poster')}<video class="billboard-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="billboard-shade"></div><div class="billboard-copy"><p class="eyebrow" dir="auto">${escape(kicker(featured))}</p>${title(featured, 'h1')}<p class="hero-meta">${metaLine(featured)}<span class="meta-cuts">${cuts(featured)}</span></p><div class="blurb-wrap"><p class="blurb">${escape(featured.blurb)}</p></div><div class="billboard-actions"><button class="primary" data-action="hero-play" data-id="${escape(featured.id)}">${icon('play')}Play</button><button class="secondary" data-action="hero-info" data-id="${escape(featured.id)}">${icon('info')}More info</button></div></div><button class="icon-button billboard-tool" data-action="billboard-tool" aria-label="Unmute" hidden>${icon('mute')}</button></section><div class="shelves">${rows.map(([name, films]) => shelf(name, films, progress)).join('')}</div>`;
   return `${chips}${search}${body}<footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
 }
-// Shuffle: the whole cinema as a reel, one film a screen, in a new order every time (reel.js). The reel's one video
-// is started inside the opening tap, so an iPhone lets it play with sound from then on.
-function openReel() {
-  if (!catalog || screen === 'reel') return;
-  const all = groupsOf(), rail = () => main.querySelector('.reel-rail .list-toggle');
-  mount('reel', reelView(shuffleDeck(all), all.length));
-  main.querySelector('.reel-video').play().catch(() => {});
+// Reels: the cinema as a reel, one film a screen (reel.js), with the titles, order, sound and end the owner chose
+// in Settings. The reel's one video is started inside the tap that opened the tab, so an iPhone lets it play with
+// sound from then on. Coming back within the visit finds the same films, on the same one, at the same time.
+const reelKey = () => JSON.stringify([prefs.reelKinds, prefs.reelOrder, prefs.reelSound]);
+function reelScreen() {
+  const all = groupsOf(), byId = new Map(all.map(group => [group.id, group]));
+  const saved = reelResume?.catalog === catalog && reelResume.key === reelKey() ? reelResume : null;
+  reelResume = null;
+  const entries = saved ? saved.items.map(item => ({ f: byId.get(item.id), n: item.n })).filter(item => item.f) : reelDeck(all, prefs).map((f, index) => ({ f, n: index + 1 }));
+  const total = saved ? saved.total : entries.length;
+  if (!entries.length) { mount('reel', reelEmpty(), { focus: false }); return; }
+  const at = saved && entries[saved.index] ? saved.index : 0;
+  mount('reel', reelView(entries, total, at), { focus: false });
+  main.querySelector('.reel-video').play().catch(() => {}); // inside the tab tap: an iPhone keeps the sound after this
+  const rail = () => main.querySelector('.reel-rail .list-toggle');
   live.reel = mountReel(main, {
     source: (id, shape) => source(findFilm(id), shape), icon, say: announce, onError: showError,
-    onClose: () => { library(); document.querySelector('#topbar [data-action=shuffle]')?.focus({ preventScroll: true }); },
+    sound: saved ? saved.sound : prefs.reelSound, advance: () => prefs.reelEnd === 'next',
+    resume: saved && at === saved.index ? { index: at, time: saved.time } : null,
     onActive: item => {
       const f = findFilm(item.dataset.film), on = inList(listIds, titleIds(f.id)), button = rail();
       button.dataset.id = f.id; button.setAttribute('aria-pressed', String(on));
       button.setAttribute('aria-label', `${on ? 'Remove from' : 'Add to'} My List: ${f.title}`); button.innerHTML = icon(on ? 'check' : 'plus');
-      announce(`${splitTitle(f.title).name}, ${item.dataset.n} of ${all.length}`);
+      announce(`${splitTitle(f.title).name}, ${item.dataset.n} of ${total}`);
     },
     more: () => {
-      const track = main.querySelector('.reel-track'), lastFilm = findFilm(track.lastElementChild.dataset.film);
-      track.insertAdjacentHTML('beforeend', reelItems(shuffleDeck(all, { after: lastFilm })));
+      const track = main.querySelector('.reel-track'), last = byId.get(track.lastElementChild.dataset.film);
+      track.insertAdjacentHTML('beforeend', reelItems(nextRound(all, prefs, last).map((f, index) => ({ f, n: index + 1 })), -1));
       void fillPosters(revision);
       return true;
     },
   });
+  live.reel.meta = { catalog, key: reelKey(), total };
 }
-function reelItems(deck) {
+// Posters load for the film on screen and its neighbours first; the rest wait until they come near.
+function reelItems(entries, at = 0) {
   const prefer = desktopQuery.matches ? 'desktop' : 'phone';
-  return deck.map((f, index) => {
-    const cut = f.versions.find(v => v.kind === prefer) || f.versions[0];
-    return `<article class="reel-item" aria-hidden="true" data-film="${escape(f.id)}" data-shape="${cut.kind}" data-n="${index + 1}" aria-label="${escape(f.title)}"><div class="reel-stage">${poster(f, 'reel-fill', index > 1)}${poster(f, 'reel-poster', index > 1)}<div class="reel-shade"></div><i class="reel-progress" aria-hidden="true"></i></div><div class="reel-copy"><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'reel-title')}<p class="reel-meta">${metaLine(f)}</p><p class="blurb" dir="auto">${escape(f.blurb)}</p></div></article>`;
+  return entries.map(({ f, n }, index) => {
+    const cut = f.versions.find(v => v.kind === prefer) || f.versions[0], lazy = at < 0 || Math.abs(index - at) > 1;
+    return `<article class="reel-item" aria-hidden="true" data-film="${escape(f.id)}" data-shape="${cut.kind}" data-n="${n}" aria-label="${escape(f.title)}"><div class="reel-stage">${poster(f, 'reel-fill', lazy)}${poster(f, 'reel-poster', lazy)}<div class="reel-shade"></div><i class="reel-progress" aria-hidden="true"></i></div><div class="reel-copy"><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'reel-title')}<p class="reel-meta">${metaLine(f)}</p><p class="blurb" dir="auto">${escape(f.blurb)}</p></div></article>`;
   }).join('');
 }
-function reelView(deck, total) {
-  return `<section class="reel" aria-label="Shuffle: the whole cinema" data-total="${total}"><video class="reel-video" playsinline preload="auto" aria-hidden="true" tabindex="-1"></video><div class="reel-top"><button class="icon-button round" data-reel="close" aria-label="Close shuffle">${icon('close')}</button><p class="reel-count" aria-hidden="true">${icon('shuffle')}<b>1 / ${total}</b></p></div><div class="reel-rail"><button class="icon-button round reel-step" data-reel="prev" aria-label="Previous film">${icon('chevron')}</button><button class="icon-button round reel-step" data-reel="next" aria-label="Next film">${icon('chevron')}</button>${listButton(deck[0], 'reel-list')}<span class="reel-sound"><span class="reel-hint" aria-hidden="true">Tap for sound</span><button class="icon-button round" data-reel="sound" aria-label="Mute">${icon('sound')}</button></span><button class="icon-button round" data-reel="fullscreen" aria-label="Full screen">${icon('expand')}</button></div><span class="reel-pause" aria-hidden="true">${icon('play')}</span><p class="reel-note" role="status"></p><div class="reel-track">${reelItems(deck)}</div></section>`;
+function reelView(entries, total, at) {
+  const order = prefs.reelOrder === 'shuffle' ? ['shuffle', 'Shuffled'] : ['reels', 'Newest first'];
+  return `<section class="reel" aria-label="Reels" data-total="${total}"><video class="reel-video" playsinline preload="auto" aria-hidden="true" tabindex="-1"></video><div class="reel-top"><p class="reel-count" title="${order[1]}" aria-hidden="true">${icon(order[0])}<b>${entries[at].n} / ${total}</b></p></div><div class="reel-track" tabindex="0" aria-label="Films. Arrow keys move, Space pauses, M mutes.">${reelItems(entries, at)}</div><div class="reel-rail"><button class="icon-button round reel-step" data-reel="prev" aria-label="Previous film">${icon('chevron')}</button><button class="icon-button round reel-step" data-reel="next" aria-label="Next film">${icon('chevron')}</button>${listButton(entries[at].f, 'reel-list')}<span class="reel-sound"><span class="reel-hint" aria-hidden="true">Tap for sound</span><button class="icon-button round" data-reel="sound" aria-label="Mute">${icon('sound')}</button></span><button class="icon-button round" data-reel="fullscreen" aria-label="Full screen">${icon('expand')}</button></div><span class="reel-pause" aria-hidden="true">${icon('play')}</span><p class="reel-note" role="status"></p></section>`;
 }
+// Settings can leave Reels with nothing to play (say, only Demos, and there are none yet): a calm way back.
+function reelEmpty() {
+  const kinds = prefs.reelKinds.map(kind => KIND_NAMES[kind]).join(', ').replace(/, ([^,]*)$/, ' or $1');
+  return `<section class="reel reel-empty" aria-label="Reels"><div class="empty-list"><div class="state-icon">${icon('reels')}</div><h1>Nothing to play here yet</h1><p>There are no ${escape(kinds.toLowerCase())} in your cinema.<br>Choose other titles for Reels in Settings.</p><div class="empty-actions"><button class="primary" data-tab="settings">${icon('settings')}Open Settings</button><button class="secondary" data-tab="home">Browse everything</button></div></div></section>`;
+}
+
+// Settings: short rows in frosted groups. Every control changes what the app does, at once or the next time
+// Reels opens; the choices live in one key (settings.js).
+const plural = (n, word = 'title') => `${n} ${n === 1 ? word : `${word}s`}`;
+const switchRow = (id, name, on, note = '') => `<label class="set-row" for="${id}"><span class="set-text"><span class="set-name" id="${id}-name">${name}</span>${note ? `<small class="set-note" id="${id}-note">${note}</small>` : ''}</span><span class="switch"><input type="checkbox" id="${id}" role="switch" aria-labelledby="${id}-name"${on ? ' checked' : ''}${note ? ` aria-describedby="${id}-note"` : ''}></span></label>`;
+const choiceRow = (name, label, options, value, note = '') => `<div class="set-row set-stack" role="radiogroup" aria-labelledby="${name}-label" aria-describedby="${name}-note"><span class="set-name" id="${name}-label">${label}</span><div class="segmented">${options.map(([key, text]) => `<label><input type="radio" name="${name}" value="${key}"${key === value ? ' checked' : ''}><span>${text}</span></label>`).join('')}</div><small class="set-note" id="${name}-note"${note ? '' : ' hidden'}>${note}</small></div>`;
+const kindChip = (kind, count) => { const on = prefs.reelKinds.includes(kind); return `<button class="set-chip" data-reel-kind="${kind}" aria-pressed="${on}" aria-label="${KIND_NAMES[kind]}${count === undefined ? '' : `, ${plural(count)}`}">${icon(on ? 'check' : 'plus')}<span>${KIND_NAMES[kind]}</span>${count === undefined ? '' : `<small aria-hidden="true">${count}</small>`}</button>`; };
+function settingsView({ solo = false } = {}) {
+  const all = catalog ? groupsOf() : [], counts = catalog ? reelKinds(all) : {}, saved = catalog ? listGroups(all, listIds).length : 0;
+  const group = (id, label, rows) => `<section class="set-group" aria-labelledby="set-${id}"><h2 class="set-label" id="set-${id}">${label}</h2><div class="set-card">${rows}</div></section>`;
+  const tokenState = demo ? 'Demo, no token used' : token ? 'Saved in this browser' : 'Not connected';
+  return `<section class="settings-page" aria-labelledby="settings-title"><div class="settings-head">${solo ? `<button class="icon-button" data-action="settings-back" aria-label="Back">${icon('back')}</button>` : ''}<h1 id="settings-title">Settings</h1></div>
+${group('playback', 'Playback', switchRow('autoplay-toggle', 'Autoplay previews', prefs.autoplay && !reduced(), 'Muted previews on the home, on cards and in More info.'))}
+${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder)}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
+${catalog ? group('list', 'My List', `<button class="set-row set-link" data-action="open-list"><span class="set-name">Open My List</span><span class="set-value">${plural(saved)}</span>${icon('arrow')}</button>`) : ''}
+${group('connection', 'Connection', `<div class="set-row"><span class="set-name">Token</span><span class="set-value">${tokenState}</span></div><button class="set-row set-link set-danger" id="forget-token" data-action="forget-token" aria-describedby="forget-note"><span class="set-name">Forget token</span></button><p class="set-foot" id="forget-note">Removes the token and cached posters, then goes back to Connect.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`)}
+${group('about', 'About', `${catalog ? `<div class="set-row"><span class="set-name">Titles</span><span class="set-value">${all.length}</span></div>` : ''}<div class="set-row"><span class="set-name">Collection</span><span class="set-value">${demo ? 'Demo' : 'Private'}</span></div><div class="set-row"><span class="set-name">App shell</span><span class="set-value" id="shell-version">Checking…</span></div>`)}
+</section>`;
+}
+function settingsScreen({ solo = false } = {}) {
+  mount(solo ? 'settings-solo' : 'settings', settingsView({ solo }), { focus: solo });
+  syncAutoplay();
+  void showShell(revision);
+}
+// The app shell version is the service worker cache this browser holds (sw.js), read from Cache Storage.
+async function showShell(stamp) {
+  let text = 'Not saved for offline';
+  try { const name = (await caches.keys()).find(key => key.startsWith('mkc-shell-')); if (name) text = `${name.slice(10)} · saved for offline`; } catch { /* no Cache Storage here */ }
+  if (stamp === revision) main.querySelector('#shell-version')?.replaceChildren(text);
+}
+function saveSettings() { writeSettings(storage, prefs); }
 function feedView(all) {
   const shown = all.slice(0, 24); // newest first; a long library does not become an endless feed
   const item = f => `<article class="hot-item" data-film="${escape(f.id)}" aria-label="${escape(f.title)}"><div class="hot-stage">${poster(f, 'hot-poster')}<video class="hot-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="hot-shade"></div><i class="hot-bar" aria-hidden="true"></i></div><div class="hot-copy"><p class="hot-date">${isNew(f) ? '<span class="new-badge">NEW</span>' : ''}${Date.parse(f.added) ? `<time datetime="${escape(f.added)}">${formatDate(f.added)}</time>` : 'Date unavailable'}</p><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'hot-name')}<p class="blurb">${escape(f.blurb)}</p><div class="hot-actions"><button class="primary hot-play" data-play-film="${escape(f.id)}" aria-label="Play ${escape(f.title)}">${icon('play')}Play</button>${listButton(f)}<button class="icon-button round" data-film="${escape(f.id)}" aria-label="More info: ${escape(f.title)}">${icon('info')}</button></div></div></article>`;
@@ -340,7 +433,7 @@ function feedView(all) {
 }
 function listView(all, progress) {
   const items = listGroups(all, listIds);
-  return `<section class="results list-view" aria-label="My List"><div class="results-head"><div><h1>My List</h1><p class="results-count" role="status">${items.length} ${items.length === 1 ? 'title' : 'titles'}</p></div></div>${items.length ? `<div class="results-grid">${items.map(f => card(f, progress)).join('')}</div>` : `<div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Your list is empty</h2><p>Add films with + to keep them here.</p><button class="secondary" data-tab="home">Browse films</button></div>`}</section><footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
+  return `<section class="results list-view" aria-label="My List"><div class="results-head">${listFrom ? `<button class="icon-button list-back" data-action="back-settings" aria-label="Back to Settings">${icon('back')}</button>` : ''}<div class="list-heading"><h1>My List</h1><p class="results-count" role="status">${items.length} ${items.length === 1 ? 'title' : 'titles'}</p></div></div>${items.length ? `<div class="results-grid">${items.map(f => card(f, progress)).join('')}</div>` : `<div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Your list is empty</h2><p>Add films with + to keep them here.</p><button class="secondary" data-tab="home">Browse films</button></div>`}</section><footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
 }
 function card(f, progress = {}) {
   const id = f.resumeFilmId || f.id, saved = progress[id], { kicker: brand, name } = splitTitle(f.title);
@@ -420,6 +513,7 @@ async function closeDetail(from = 0) {
   detail.close(); detail.remove();
   screen = 'library';
   live.billboard?.hold(false); live.feed?.hold(false);
+  if (listDirty && tab === 'home' && main.querySelector('.shelves')) { listDirty = false; refreshListRow(); }
   const card = detailOrigin && main.querySelector(`.film-card[data-film="${CSS.escape(detailOrigin.id)}"]`);
   const back = detailOpener?.isConnected && detailOpener !== document.body ? detailOpener : card;
   if (back) back.focus({ preventScroll: true });
@@ -440,7 +534,7 @@ const messages = {
 };
 function stateScreen(state) {
   const [heading,copy,symbol] = messages[state] || messages.invalid;
-  screen = state;
+  screen = state; restore = () => stateScreen(state);
   mount(state, `${header()}<section class="recovery"><div class="stage-light" aria-hidden="true"></div><div class="recovery-copy">${symbol ? `<div class="state-icon">${icon(symbol)}</div>` : ''}<h1>${heading}</h1><p>${copy}</p></div><button class="primary" data-action="${state==='access' ? 'connect' : 'retry'}">${icon('retry')}${state==='empty'?'Refresh':state==='access'?'Update token':'Retry'}</button></section>`);
 }
 function showError(error) {
@@ -559,6 +653,7 @@ async function onClick(event) {
   if (stage && !event.target.closest('button') && main.contains(stage)) { chooseFilm(stage.closest('.hot-item').dataset.film, false, stage); return; }
   const button=event.target.closest('button'); if(!button) return;
   if(button.dataset.tab) { go(button.dataset.tab); return; }
+  if(button.dataset.reelKind) { chooseKind(button); return; }
   if(button.dataset.playFilm) { chooseFilm(button.dataset.playFilm, true); return; }
   if(button.dataset.filter) { activeFilter=button.dataset.filter; gridMode=true; library(); main.querySelector(`[data-filter="${activeFilter}"]`)?.focus({preventScroll:true}); return; }
   if(button.dataset.variant) { chooseFilm(button.dataset.variant); [...main.querySelectorAll('[data-variant]')].find(el => el.dataset.variant === film.id)?.focus(); return; }
@@ -571,14 +666,17 @@ async function onClick(event) {
     case 'toggle-list': toggleMyList(button.dataset.id); break;
     case 'detail-mute': { const video=main.querySelector('.detail-video'); video.muted=!video.muted; button.setAttribute('aria-label',video.muted?'Unmute':'Mute'); button.setAttribute('aria-pressed',String(!video.muted)); button.innerHTML=icon(video.muted?'mute':'sound'); break; }
     case 'explore': exploreRow=button.dataset.row; gridMode=true; library(); main.querySelector('[data-action="clear-filter"]')?.focus({preventScroll:true}); break;
-    case 'shuffle': openReel(); break;
-    case 'search': if(screen!=='library') break; if(tab!=='home') { tab='home'; activeFilter='All'; exploreRow=null; } searching=true; gridMode=true; library(); main.querySelector('#film-search').focus(); break;
+    case 'search': if(!catalog || !TABBED.includes(screen)) break; if(tab!=='home') { tab='home'; activeFilter='All'; exploreRow=null; listFrom=null; } searching=true; gridMode=true; library(); main.querySelector('#film-search').focus(); break;
     case 'close-search': searching=false; query=''; gridMode=activeFilter!=='All'; library(); main.querySelector('[data-action="search"]')?.focus() || document.querySelector('[data-action="search"]')?.focus(); break;
     case 'clear-filter': activeFilter='All'; query=''; searching=false; gridMode=false; exploreRow=null; library(); main.querySelector('.filters') && (main.querySelector('.filters').scrollLeft=0); main.querySelector('[data-filter="All"]')?.focus({preventScroll:true}); break;
     case 'back': screen==='film' ? library() : filmPage(); break;
     case 'retry': await loadLibrary(); break;
     case 'connect': connect(); break;
-    case 'settings': syncAutoplay(); settings.showModal(); break;
+    case 'settings': if (catalog && TABBED.includes(screen)) go('settings'); else settingsScreen({ solo: true }); break;
+    case 'settings-back': (restore || connect)(); break;
+    case 'open-list': tab = 'list'; listFrom = 'settings'; activeFilter = 'All'; query = ''; searching = false; gridMode = false; exploreRow = null; swap(library); break;
+    case 'back-settings': go('settings'); break;
+    case 'forget-token': await forgetToken(); break;
     case 'play': await play(); break;
     case 'save': await save(); break;
     case 'cancel-save': filmPage(); break;
@@ -607,27 +705,47 @@ const bob = createBob({
   actions: { play: id => chooseFilm(id, true), info: (id, origin) => chooseFilm(id, false, origin), toggle: toggleMyList },
   icon, esc: escape, duration, isNew, topOffset: () => topbar.getBoundingClientRect().bottom,
 });
-// The Autoplay previews switch in Settings; reduced motion turns every preview off whatever the switch says.
-const autoplayToggle = document.querySelector('#autoplay-toggle');
+// Settings controls. Reduced motion turns every preview off whatever the Autoplay switch says, and no film moves on
+// by itself, so those two controls show that instead of pretending.
 function syncAutoplay() {
-  autoplayToggle.checked = autoplay && !reduced(); autoplayToggle.disabled = reduced();
-  document.querySelector('#autoplay-note').textContent = reduced() ? 'Off because this device asks for reduced motion.' : 'Muted previews on the home, on cards and in More info.';
+  const toggle = main.querySelector('#autoplay-toggle');
+  if (toggle) {
+    toggle.checked = prefs.autoplay && !reduced(); toggle.disabled = reduced();
+    main.querySelector('#autoplay-toggle-note').textContent = reduced() ? 'Off because this device asks for reduced motion.' : 'Muted previews on the home, on cards and in More info.';
+    const note = main.querySelector('#reel-end-note');
+    main.querySelectorAll('[name=reel-end]').forEach(input => { input.disabled = reduced(); });
+    note.textContent = reduced() ? 'Films wait, because this device asks for reduced motion.' : ''; note.hidden = !reduced();
+  }
   live.billboard?.sync(); live.feed?.sync(); live.modal?.sync(); bob.sync();
 }
-autoplayToggle.addEventListener('change', () => { autoplay = autoplayToggle.checked; writeAutoplay(storage, autoplay); syncAutoplay(); });
-onReducedChange(syncAutoplay);
-syncAutoplay();
-window.addEventListener('pagehide', persistPlayback);
-document.addEventListener('visibilitychange', () => { if(document.hidden) persistPlayback(); });
-document.querySelector('[data-close-settings]').addEventListener('click',()=>settings.close());
-document.querySelector('#forget-token').addEventListener('click',async()=>{
+main.addEventListener('change', event => {
+  const input = event.target;
+  if (input.id === 'autoplay-toggle') { prefs.autoplay = input.checked; saveSettings(); syncAutoplay(); }
+  else if (input.id === 'reel-sound') { prefs.reelSound = input.checked; saveSettings(); }
+  else if (input.name === 'reel-order' && input.checked) { prefs.reelOrder = input.value; saveSettings(); }
+  else if (input.name === 'reel-end' && input.checked) { prefs.reelEnd = input.value; saveSettings(); }
+});
+// Which titles Reels plays. The last kind on stays on, and says so.
+function chooseKind(button) {
+  const kind = button.dataset.reelKind, next = toggleKind(prefs.reelKinds, kind);
+  if (next === prefs.reelKinds) { announce('Reels keep at least one kind on.'); button.classList.remove('pop'); void button.offsetWidth; button.classList.add('pop'); return; }
+  prefs.reelKinds = next; saveSettings();
+  for (const chip of main.querySelectorAll('[data-reel-kind]')) {
+    const on = next.includes(chip.dataset.reelKind);
+    chip.setAttribute('aria-pressed', String(on)); chip.querySelector('svg').outerHTML = icon(on ? 'check' : 'plus');
+  }
+}
+async function forgetToken() {
   try {
     operation.abort();
     if(!demo) localStorage.removeItem('mkc.token'); token='';
     await forgetPosters(); clearPosters(); clearPreviews(); catalog=undefined; film=undefined; savedFile=undefined;
-    settings.close(); connect();
-  } catch { document.querySelector('#settings-status').textContent='Could not clear browser storage. Try again.'; }
-});
+    reelResume=null; tab='home'; listFrom=null; connect();
+  } catch { const status=main.querySelector('#settings-status'); if (status) status.textContent='Could not clear browser storage. Try again.'; }
+}
+onReducedChange(syncAutoplay);
+window.addEventListener('pagehide', persistPlayback);
+document.addEventListener('visibilitychange', () => { if(document.hidden) persistPlayback(); });
 window.addEventListener('offline',()=>{ if(screen!=='connect') stateScreen('offline'); });
 async function start() {
   const preview=demo && params.get('state');
