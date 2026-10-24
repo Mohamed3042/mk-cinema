@@ -211,6 +211,12 @@ try {
         assert.ok(media.w > 0 && media.h > 0 && !media.error, 'Video decoded without error');
         assert.equal(media.fit, 'contain', 'Video is never cropped');
         assert.ok(kind === 'portrait' ? media.h > media.w : media.w > media.h, 'Correct video version');
+        const frame = await page.locator('.np').evaluate(el => { const r = el.getBoundingClientRect(); return { box: [r.left, r.top, r.width, r.height].map(Math.round), rotated: el.hasAttribute('data-rotated') }; });
+        assert.deepEqual(frame.box, [0, 0, viewport.width, viewport.height], 'The player covers the whole screen');
+        assert.deepEqual(await video.evaluate(el => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); }), [0, 0, viewport.width, viewport.height], 'The film box covers the whole screen');
+        assert.equal(frame.rotated, !desktop && kind === 'landscape', 'Only a 16:9 film on an upright phone is turned sideways');
+        assert.equal(await page.locator('.player-header, .player-controls').count(), 0, 'No header or control strip outside the film');
+        await checkLayout(page);
         await page.getByLabel('Seek', { exact: true }).focus();
         await page.keyboard.press('End');
         assert.ok(await video.evaluate(el => el.currentTime > 2.5), 'Video seeks to the end');
@@ -467,7 +473,9 @@ try {
     await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
     await page.locator('video').evaluate(el => el.pause());
     await checkLayout(page);
-    await shot(page, 'player-rotated');
+    assert.equal(await page.locator('.np').getAttribute('data-rotated'), null, 'A phone in landscape is never turned');
+    assert.deepEqual(await page.locator('video').evaluate(el => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); }), [0, 0, 844, 390], 'The film fills the landscape phone');
+    await shot(page, 'player-landscape-phone');
     await context.close();
   });
   await record('320 px phone and reduced motion', async () => {

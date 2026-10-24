@@ -1087,11 +1087,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v8'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js']) assert.ok(cached['mkc-shell-v8'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v8'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v9'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'player.js']) assert.ok(cached['mkc-shell-v9'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v9'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
-    assert.equal(await page.locator('#shell-version').innerText(), 'v8 · saved for offline', 'Settings → About names the shell this browser holds');
+    assert.equal(await page.locator('#shell-version').innerText(), 'v9 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 
@@ -1112,6 +1112,295 @@ try {
     assert.equal(result.frame, null, 'A frame from another origin cannot be read');
     assert.ok(result.lit, 'The poster still lights the page');
     assert.notEqual(result.pale, null, 'The poster is still read for its shade');
+    await context.close();
+  });
+
+  // The Netflix-style player (player.js). Final screenshots for review go to shots/netflix-player/.
+  await mkdir(new URL('netflix-player/', shots), { recursive: true });
+  const LANDSCAPE = { width: 844, height: 390 };
+  const ui = page => page.locator('.np').getAttribute('data-ui');
+  const media = page => page.locator('main.player video').evaluate(el => ({ t: el.currentTime, paused: el.paused, muted: el.muted, fit: getComputedStyle(el).objectFit, w: el.videoWidth, h: el.videoHeight }));
+  // Opens the billboard film (Golden Hour: a Phone and a Desktop cut) in the given cut, the way a finger or a mouse would.
+  async function openPlayer(page, cut, { touch = true } = {}) {
+    await loaded(page);
+    const press = locator => touch ? locator.tap() : locator.click();
+    await press(page.locator('.billboard [data-action=hero-info]'));
+    await page.locator('#film-detail[open]').waitFor();
+    await press(page.locator('#film-detail').getByRole('button', { name: cut }));
+    await press(page.locator('#film-detail [data-action=play]'));
+    await page.waitForFunction(() => { const v = document.querySelector('main.player video'); return v?.readyState >= 2 && !v.paused; });
+    return page.locator('main.player video');
+  }
+  // Pauses on a given frame (paused, the controls stay up).
+  const still = (page, time) => page.locator('main.player video').evaluate((el, at) => new Promise(resolve => { el.pause(); el.addEventListener('seeked', resolve, { once: true }); el.currentTime = at; }), time);
+  const rectOf = (page, selector) => page.locator(selector).evaluate(el => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(n => Math.round(n)); });
+  const npShot = (page, name) => shot(page, `netflix-player/${name}`);
+
+  await record('Player: a 9:16 cut fills the upright phone with sound from the Play tap; controls hide 3 s after the last touch and one tap brings them back', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await openPlayer(page, 'Phone 9:16');
+    const start = await media(page);
+    assert.equal(start.muted, false, 'the film plays with sound');
+    assert.ok(start.h > start.w, 'the phone cut plays');
+    assert.equal(await page.locator('#topbar').isVisible(), false, 'no page header');
+    assert.equal(await page.locator('#tabbar').isVisible(), false, 'no tab bar');
+    assert.deepEqual(await rectOf(page, 'main.player video'), [0, 0, 390, 844], 'the film box covers the whole screen, no margins');
+    assert.equal(await page.locator('.np').getAttribute('data-rotated'), null, 'a 9:16 film is not turned');
+    assert.equal(start.fit, 'contain', 'shown whole by default: titles near the edges are never cut');
+    for (const button of await page.locator('.np button:visible').all()) assert.ok(await button.getAttribute('aria-label'), 'every control has a label');
+    assert.equal(await page.locator('.np-scrub').getAttribute('role'), 'slider');
+    // Playing: the controls leave by themselves.
+    await page.waitForFunction(() => document.querySelector('.np').dataset.ui === 'off', null, { timeout: 4500 });
+    await npShot(page, 'phone-9x16-clean');
+    // One tap on the picture brings them back; they leave 3 s after that tap.
+    await page.touchscreen.tap(195, 250);
+    const tapped = Date.now();
+    assert.equal(await ui(page), 'on', 'one tap brings the controls back');
+    await page.waitForTimeout(2300);
+    assert.equal(await ui(page), 'on', 'still there 2.3 s after the tap');
+    await page.waitForFunction(() => document.querySelector('.np').dataset.ui === 'off', null, { timeout: 3000 });
+    const gone = Date.now() - tapped;
+    assert.ok(gone >= 2900 && gone < 4000, `the controls leave about 3 s after the last touch (${gone} ms)`);
+    assert.equal(await page.locator('.np-ui').evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+    assert.equal(await page.locator('[data-np=play]').evaluate(el => getComputedStyle(el).pointerEvents), 'none', 'hidden controls take no taps');
+    await page.touchscreen.tap(195, 250);
+    assert.equal(await ui(page), 'on');
+    await page.touchscreen.tap(195, 250);
+    assert.equal(await ui(page), 'off', 'a tap on the picture while they show sends them away');
+    // Paused, they stay.
+    await page.touchscreen.tap(195, 250);
+    await page.locator('[data-np=play]').tap();
+    assert.equal((await media(page)).paused, true);
+    assert.equal(await page.locator('[data-np=play]').getAttribute('aria-label'), 'Play');
+    await page.waitForTimeout(3400);
+    assert.equal(await ui(page), 'on', 'the controls stay while the film is paused');
+    await still(page, 4.2);
+    await npShot(page, 'phone-9x16-controls');
+    await context.close();
+  });
+
+  await record('Player: a double-tap on the left or right third jumps 10 s back or forward with a ripple', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await openPlayer(page, 'Phone 9:16');
+    await still(page, 11);
+    const twice = async (x, y) => { await page.touchscreen.tap(x, y); await page.waitForTimeout(90); await page.touchscreen.tap(x, y); };
+    await twice(60, 300);
+    let t = (await media(page)).t;
+    assert.ok(Math.abs(t - 1) < 0.3, `double-tap left: 11 s to 1 s (${t.toFixed(2)})`);
+    const back = page.locator('.np-ripple[data-side=back]');
+    assert.ok(await back.evaluate(el => el.classList.contains('go')), 'the left ripple shows');
+    assert.equal(await back.locator('b').innerText(), '−10');
+    await page.waitForTimeout(800);
+    assert.equal(await page.evaluate(() => Boolean(document.fullscreenElement)), false, 'a double-tap never goes full screen');
+    await twice(330, 300);
+    t = (await media(page)).t;
+    assert.ok(Math.abs(t - 11) < 0.3, `double-tap right: 1 s to 11 s (${t.toFixed(2)})`);
+    assert.equal(await page.locator('.np-ripple[data-side=forward] b').innerText(), '+10');
+    await page.waitForTimeout(800);
+    // A single tap on a side only shows or hides the controls, after a moment, and does not jump.
+    assert.equal(await ui(page), 'on');
+    await page.touchscreen.tap(60, 300);
+    await page.waitForFunction(() => document.querySelector('.np').dataset.ui === 'off', null, { timeout: 1000 });
+    assert.ok(Math.abs((await media(page)).t - 11) < 0.05, 'a single tap does not seek');
+    // The ±10 buttons and the keyboard do the same.
+    await page.touchscreen.tap(195, 250);
+    await page.getByRole('button', { name: 'Back 10 seconds' }).tap();
+    assert.ok(Math.abs((await media(page)).t - 1) < 0.3, 'the Back 10 seconds button');
+    await page.getByRole('button', { name: 'Forward 10 seconds' }).tap();
+    assert.ok(Math.abs((await media(page)).t - 11) < 0.3, 'the Forward 10 seconds button');
+    await context.close();
+  });
+
+  await record('Player: a 16:9 cut on an upright phone turns sideways and fills it; taps, double-taps and the scrubber work in the turned frame', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    const video = await openPlayer(page, 'Desktop 16:9');
+    const m = await media(page);
+    assert.ok(m.w > m.h, 'the desktop cut plays');
+    assert.equal(await page.locator('.np').getAttribute('data-rotated'), '', 'the player is turned');
+    assert.deepEqual(await rectOf(page, '.np'), [0, 0, 390, 844], 'the turned player covers the screen');
+    assert.deepEqual(await rectOf(page, 'main.player video'), [0, 0, 390, 844], 'the film box covers the screen');
+    const [a, b] = await page.locator('.np').evaluate(el => new DOMMatrix(getComputedStyle(el).transform)).then(x => [x.a, x.b]);
+    assert.ok(Math.abs(a) < 1e-6 && Math.abs(b - 1) < 1e-6, 'turned 90° clockwise');
+    // The film's own frame is landscape: the video is 844 wide and 390 high in it.
+    assert.deepEqual(await video.evaluate(el => [el.offsetWidth, el.offsetHeight]), [844, 390]);
+    await still(page, 4.2);
+    await npShot(page, 'phone-16x9-turned');
+    // The scrubber runs down the screen. A touch a quarter of the way down is a quarter of the film.
+    const track = await page.locator('.np-track').evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top, h: r.height, w: r.width }; });
+    assert.ok(track.h > 500 && track.w < 12, 'the bar runs down the upright screen');
+    const length = await video.evaluate(el => el.duration);
+    await page.touchscreen.tap(track.x, track.top + track.h * 0.25);
+    let t = (await media(page)).t;
+    assert.ok(Math.abs(t - length * 0.25) < 0.35, `a tap a quarter down the bar seeks to a quarter (${t.toFixed(2)} of ${length.toFixed(2)})`);
+    // A drag along it follows the finger, with the time bubble on show.
+    await page.mouse.move(track.x, track.top + track.h * 0.25);
+    await page.mouse.down();
+    await page.mouse.move(track.x + 6, track.top + track.h * 0.5, { steps: 4 });
+    assert.equal(await page.locator('.np').getAttribute('data-scrubbing'), '', 'scrubbing');
+    assert.equal(await page.locator('.np-bubble').innerText(), (await page.locator('[data-np-elapsed]').innerText()));
+    const knob = await page.locator('.np-knob').evaluate(el => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; });
+    assert.ok(Math.abs(knob - (track.top + track.h * 0.5)) < 6, 'the knob sits under the finger');
+    await page.mouse.move(track.x, track.top + track.h * 0.75, { steps: 4 });
+    await page.mouse.up();
+    t = (await media(page)).t;
+    assert.ok(Math.abs(t - length * 0.75) < 0.35, `a drag to three quarters seeks there (${t.toFixed(2)})`);
+    assert.equal(await page.locator('.np').getAttribute('data-scrubbing'), null);
+    // The film's left third is the top of the screen.
+    await still(page, 11);
+    await page.touchscreen.tap(195, 120); await page.waitForTimeout(90); await page.touchscreen.tap(195, 120);
+    t = (await media(page)).t;
+    assert.ok(Math.abs(t - 1) < 0.3, `a double-tap at the top of the screen jumps back (${t.toFixed(2)})`);
+    await page.waitForTimeout(800);
+    await page.touchscreen.tap(195, 740); await page.waitForTimeout(90); await page.touchscreen.tap(195, 740);
+    t = (await media(page)).t;
+    assert.ok(Math.abs(t - 11) < 0.3, `a double-tap at the bottom jumps forward (${t.toFixed(2)})`);
+    // Buttons answer where they are drawn: Back sits at the top right of the screen.
+    const backButton = await page.getByRole('button', { name: 'Back to film' }).evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    assert.ok(backButton.x > 300 && backButton.y < 100, 'Back is at the film\'s top left, the screen\'s top right');
+    await page.touchscreen.tap(backButton.x, backButton.y);
+    await page.locator('#film-detail[open]').waitFor();
+    await context.close();
+  });
+
+  await record('Player: a phone held in landscape plays a 16:9 cut edge to edge, never turned', async () => {
+    const { context, page } = await session({ viewport: LANDSCAPE, phone: true });
+    await openPlayer(page, 'Desktop 16:9');
+    assert.equal(await page.locator('.np').getAttribute('data-rotated'), null, 'nothing is turned');
+    assert.ok(identity(await page.locator('.np').evaluate(el => getComputedStyle(el).transform)));
+    assert.deepEqual(await rectOf(page, 'main.player video'), [0, 0, 844, 390]);
+    await still(page, 4.2);
+    await npShot(page, 'phone-landscape-16x9');
+    // Turning the phone upright turns the player; turning it back undoes it.
+    await page.setViewportSize(PHONE);
+    await page.waitForFunction(() => document.querySelector('.np').hasAttribute('data-rotated'));
+    await page.setViewportSize(LANDSCAPE);
+    await page.waitForFunction(() => !document.querySelector('.np').hasAttribute('data-rotated'));
+    await context.close();
+  });
+
+  await record('Player: Fit or Fill switches object-fit by button and by pinch, is remembered, and shows in Settings', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await openPlayer(page, 'Phone 9:16');
+    await still(page, 4.2);
+    const fill = page.getByRole('button', { name: 'Fill the screen' });
+    assert.equal(await fill.getAttribute('aria-pressed'), 'false');
+    await fill.tap();
+    assert.equal((await media(page)).fit, 'cover', 'Fill covers the screen');
+    assert.equal(await fill.getAttribute('aria-pressed'), 'true');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('mkc.settings'))).playerFit, 'fill', 'remembered in mkc.settings');
+    await page.waitForTimeout(450); // the zoom settles
+    await npShot(page, 'phone-9x16-fill');
+    // A two-finger pinch in shows the whole film again; out fills.
+    const cdp = await context.newCDPSession(page);
+    const pinch = async (from, to) => {
+      const points = gap => [{ x: 195, y: 230 - gap / 2, id: 0 }, { x: 195, y: 230 + gap / 2, id: 1 }]; // clear of the buttons
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(from) });
+      for (let i = 1; i <= 6; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(from + (to - from) * i / 6) });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    await pinch(260, 90);
+    assert.equal((await media(page)).fit, 'contain', 'a pinch in fits');
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('mkc.settings'))).playerFit, 'fit');
+    await pinch(90, 260);
+    assert.equal((await media(page)).fit, 'cover', 'a pinch out fills');
+    assert.ok(Math.abs((await media(page)).t - 4.2) < 0.05, 'a pinch never seeks');
+    // Settings → Playback shows the choice and changes it.
+    await page.getByRole('button', { name: 'Back to film' }).tap();
+    await page.locator('#film-detail [data-action=close-detail]').tap();
+    await page.locator('#film-detail').waitFor({ state: 'detached' });
+    await page.locator('#tabbar').getByRole('button', { name: 'Settings' }).tap();
+    const fillRadio = page.getByRole('radio', { name: 'Fill', exact: true }), fitRadio = page.getByRole('radio', { name: 'Fit', exact: true });
+    assert.equal(await fillRadio.isChecked(), true, 'Settings shows Fill');
+    await page.locator('label').filter({ has: fitRadio }).tap();
+    assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('mkc.settings'))).playerFit, 'fit');
+    await page.reload();
+    await openPlayer(page, 'Phone 9:16');
+    assert.equal((await media(page)).fit, 'contain', 'the player opens as Settings says');
+    await context.close();
+  });
+
+  await record('Player: switching cut in the player carries on at the same time, with sound', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await openPlayer(page, 'Phone 9:16');
+    await still(page, 5);
+    const desktopCut = page.getByRole('button', { name: 'Desktop 16:9' });
+    assert.equal(await page.getByRole('button', { name: 'Phone 9:16' }).getAttribute('aria-pressed'), 'true');
+    await desktopCut.tap();
+    await page.waitForFunction(() => { const v = document.querySelector('main.player video'); return v?.readyState >= 2 && v.videoWidth > v.videoHeight && !v.paused; });
+    const m = await media(page);
+    assert.ok(m.t >= 4.9 && m.t < 6.5, `the desktop cut carries on at 5 s (${m.t.toFixed(2)})`);
+    assert.equal(m.muted, false);
+    assert.equal(await page.locator('.np').getAttribute('data-rotated'), '', 'and turns sideways');
+    assert.equal(await page.getByRole('button', { name: 'Desktop 16:9' }).getAttribute('aria-pressed'), 'true');
+    await context.close();
+  });
+
+  await record('Player: desktop fills the window; F, Space, arrows, M and Esc work', async () => {
+    const { context, page } = await session();
+    const video = await openPlayer(page, 'Desktop 16:9', { touch: false });
+    assert.deepEqual(await rectOf(page, 'main.player video'), [0, 0, 1440, 900], 'the film fills the window, no letterbox chrome');
+    assert.equal(await page.locator('#topbar').isVisible(), false);
+    await page.keyboard.press('f');
+    await page.waitForFunction(() => document.fullscreenElement === document.querySelector('main'));
+    assert.equal(await page.getByRole('button', { name: 'Exit full screen' }).count(), 1, 'the button says how to leave');
+    await page.keyboard.press(' ');
+    assert.equal((await media(page)).paused, true, 'Space pauses');
+    await page.keyboard.press(' ');
+    await page.waitForFunction(() => !document.querySelector('main.player video').paused);
+    await still(page, 1);
+    await page.keyboard.press('ArrowRight');
+    assert.ok(Math.abs((await media(page)).t - 11) < 0.2, 'ArrowRight jumps 10 s forward');
+    await page.keyboard.press('ArrowLeft');
+    assert.ok(Math.abs((await media(page)).t - 1) < 0.2, 'ArrowLeft jumps 10 s back');
+    await page.keyboard.press('m');
+    assert.equal((await media(page)).muted, true, 'M mutes');
+    assert.equal(await page.locator('[data-np=mute]').getAttribute('aria-label'), 'Unmute');
+    await page.keyboard.press('m');
+    assert.equal((await media(page)).muted, false, 'M unmutes');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.fullscreenElement);
+    assert.equal(await page.locator('main.player').count(), 1, 'the first Esc only leaves full screen');
+    // The slider is a real one for the keyboard.
+    const scrub = page.getByRole('slider', { name: 'Seek' });
+    await scrub.focus();
+    await page.keyboard.press('End');
+    assert.ok((await media(page)).t > 11.5, 'End goes to the end');
+    await page.keyboard.press('Home');
+    assert.ok((await media(page)).t < 0.1, 'Home goes to the start');
+    await page.keyboard.press('ArrowUp');
+    assert.ok(Math.abs((await media(page)).t - 10) < 0.2, 'ArrowUp on the slider jumps 10 s');
+    assert.equal(await scrub.getAttribute('aria-valuetext'), `0:10 of ${await video.evaluate(el => `0:${String(Math.floor(el.duration)).padStart(2, '0')}`)}`);
+    assert.notEqual(await scrub.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'keyboard focus shows on the slider');
+    // The mouse: a move shows the controls, stillness hides them and the pointer.
+    await still(page, 1); // the film has 11 s to run, more than the 3 s the controls wait
+    await page.locator('main.player video').evaluate(el => el.play());
+    await page.mouse.move(700, 300);
+    await page.mouse.move(720, 320);
+    assert.equal(await ui(page), 'on');
+    await page.waitForFunction(() => document.querySelector('.np').dataset.ui === 'off', null, { timeout: 4500 });
+    assert.equal(await page.locator('.np').evaluate(el => getComputedStyle(el).cursor), 'none', 'the pointer hides with the controls');
+    // A mouse double-click on the picture toggles full screen.
+    await page.mouse.dblclick(700, 300);
+    await page.waitForFunction(() => document.fullscreenElement === document.querySelector('main'));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.fullscreenElement);
+    await still(page, 4.2);
+    await page.mouse.move(5, 450);
+    await npShot(page, 'desktop-controls');
+    await page.keyboard.press('Escape');
+    await page.locator('#film-detail[open]').waitFor();
+    assert.equal(await page.locator('main.player').count(), 0, 'the second Esc leaves the player');
+    await context.close();
+  });
+
+  await record('Player: reduced motion shows and hides at once, with no ripple', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true, reduced: true });
+    await openPlayer(page, 'Phone 9:16');
+    assert.equal(await page.locator('.np-ui').evaluate(el => getComputedStyle(el).transitionDuration), '0s', 'no fade');
+    await still(page, 11);
+    await page.touchscreen.tap(60, 300); await page.waitForTimeout(90); await page.touchscreen.tap(60, 300);
+    assert.ok(Math.abs((await media(page)).t - 1) < 0.3, 'the double-tap still jumps');
+    assert.equal(await page.locator('.np-ripple.go').count(), 0, 'without a ripple');
     await context.close();
   });
 } finally {
