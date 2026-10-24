@@ -4,6 +4,7 @@
 // phone were turned. Every touch is mapped into that rotated frame: taps, double-taps and the scrubber.
 // The DOM is drawn by app.js (playerView); this module owns what happens in it. app.js keeps the stream, the
 // fresh-link retry and the saved progress.
+import { viewSize, onViewChange } from './viewport.js';
 
 export const SEEK_STEP = 10;
 export const HIDE_AFTER = 3000;
@@ -42,7 +43,7 @@ export function mountPlayer(root, { video, landscape, seconds = 0, fit = 'fit', 
   const length = () => Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
   // --- Layout: the frame is the viewport, or the viewport turned sideways. -----------------------------------
   function layout() {
-    const viewW = innerWidth, viewH = innerHeight;
+    const { width: viewW, height: viewH } = viewSize(); // the real screen height on an iPhone home-screen app
     const filmW = video.videoWidth || (landscape ? 16 : 9), filmH = video.videoHeight || (landscape ? 9 : 16);
     rotated = shouldRotate({ filmW, filmH, viewW, viewH });
     frame.style.setProperty('--vw', `${viewW}px`); frame.style.setProperty('--vh', `${viewH}px`);
@@ -296,6 +297,7 @@ export function mountPlayer(root, { video, landscape, seconds = 0, fit = 'fit', 
   const onResize = () => layout();
   addEventListener('resize', onResize);
   globalThis.visualViewport?.addEventListener('resize', onResize);
+  const stopView = onViewChange(onResize);
   document.addEventListener('fullscreenchange', syncFullscreen);
 
   frame.setAttribute('data-busy', '');
@@ -307,7 +309,7 @@ export function mountPlayer(root, { video, landscape, seconds = 0, fit = 'fit', 
       clearTimeout(hideTimer); clearTimeout(tapTimer); clearTimeout(rippleTimer); cancelAnimationFrame(frameLoop);
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('fullscreenchange', syncFullscreen);
-      removeEventListener('resize', onResize);
+      removeEventListener('resize', onResize); stopView();
       globalThis.visualViewport?.removeEventListener('resize', onResize);
       // A cut switch draws a new player in place: full screen stays. Any other screen leaves it.
       queueMicrotask(() => {

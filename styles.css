@@ -249,3 +249,12 @@ main.player{position:fixed;inset:0;z-index:30;max-width:none;min-height:0;margin
 .np .player-status{position:absolute;z-index:4;top:calc(50% + 48px);left:50%;max-width:min(86%,420px);margin:0;padding:8px 16px;border:1px solid var(--glass-line);border-radius:999px;background:var(--panel);font-size:14px;text-align:center;pointer-events:none;transform:translateX(-50%)}
 .np .player-status:empty{display:none}
 @media(min-width:900px){.np-ui{padding:max(26px,var(--sa-t)) max(40px,var(--sa-r)) max(28px,var(--sa-b)) max(40px,var(--sa-l))}.np .np-name{font-size:22px}.np-kicker{font-size:12px}.np-play{width:90px;height:90px}.np-play svg{width:36px;height:36px}.np .np-skip{width:66px;height:66px}.np .np-skip svg{width:36px;height:36px}.np-time{font-size:14px}.np .player-status{top:calc(50% + 72px)}}
+
+/* iPhone home-screen apps whose window falls short of the screen (viewport.js sets --app-h on html): the
+   full-screen layers reach the real bottom, and the tab bar sits 10 pt plus the safe area above it. */
+html{background:#000}
+html.app-h,html.app-h body{min-height:var(--app-h)}
+html.app-h main.player,html.app-h section.reel{bottom:auto;height:var(--app-h)}
+html.app-h .tabbar{top:calc(var(--app-h) - 10px - env(safe-area-inset-bottom));bottom:auto;transform:translateY(-100%)}
+@media(min-width:900px){html.app-h section.reel{height:calc(var(--app-h) - var(--bar-h) - env(safe-area-inset-top))}}
+body:has(section.reel){background:#000}

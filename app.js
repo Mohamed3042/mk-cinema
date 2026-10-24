@@ -10,8 +10,10 @@ import { openSheet, closeSheet, enableDrag } from './modal.js';
 import { mountAmbient, paleness } from './ambient.js';
 import { mountReel } from './reel.js';
 import { mountPlayer } from './player.js';
+import { watchViewport, diagnostics } from './viewport.js';
 import { KINDS, readSettings, writeSettings, toggleKind, reelKinds, reelDeck, nextRound } from './settings.js';
 
+watchViewport(); // before any screen draws: Reels and the player need the real screen height on iPhone
 const main = document.querySelector('main');
 const topbar = document.querySelector('#topbar');
 const tabbar = document.querySelector('#tabbar');
@@ -417,12 +419,13 @@ ${group('playback', 'Playback', `${switchRow('autoplay-toggle', 'Autoplay previe
 ${group('reels', 'Reels', `${switchRow('reel-sound', 'Start with sound', prefs.reelSound)}<div class="set-row set-stack"><span class="set-name" id="kinds-label">Which titles</span><div class="set-chips" role="group" aria-labelledby="kinds-label">${KINDS.map(kind => kindChip(kind, counts[kind])).join('')}</div></div>${choiceRow('reel-order', 'Order', [['shuffle', 'Shuffle'], ['newest', 'Newest first']], prefs.reelOrder)}${choiceRow('reel-end', 'When a film ends', [['next', 'Play the next'], ['wait', 'Wait']], prefs.reelEnd)}`)}
 ${catalog ? group('list', 'My List', `<button class="set-row set-link" data-action="open-list"><span class="set-name">Open My List</span><span class="set-value">${plural(saved)}</span>${icon('arrow')}</button>`) : ''}
 ${group('connection', 'Connection', `<div class="set-row"><span class="set-name">Token</span><span class="set-value">${tokenState}</span></div><button class="set-row set-link set-danger" id="forget-token" data-action="forget-token" aria-describedby="forget-note"><span class="set-name">Forget token</span></button><p class="set-foot" id="forget-note">Removes the token and cached posters, then goes back to Connect.</p><p class="set-foot set-status" id="settings-status" role="status"></p>`)}
-${group('about', 'About', `${catalog ? `<div class="set-row"><span class="set-name">Titles</span><span class="set-value">${all.length}</span></div>` : ''}<div class="set-row"><span class="set-name">Collection</span><span class="set-value">${demo ? 'Demo' : 'Private'}</span></div><div class="set-row"><span class="set-name">App shell</span><span class="set-value" id="shell-version">Checking…</span></div>`)}
+${group('about', 'About', `${catalog ? `<div class="set-row"><span class="set-name">Titles</span><span class="set-value">${all.length}</span></div>` : ''}<div class="set-row"><span class="set-name">Collection</span><span class="set-value">${demo ? 'Demo' : 'Private'}</span></div><div class="set-row"><span class="set-name">App shell</span><span class="set-value" id="shell-version">Checking…</span></div><p class="set-foot" id="screen-info"></p>`)}
 </section>`;
 }
 function settingsScreen({ solo = false } = {}) {
   mount(solo ? 'settings-solo' : 'settings', settingsView({ solo }), { focus: solo });
   syncAutoplay();
+  main.querySelector('#screen-info').textContent = diagnostics();
   void showShell(revision);
 }
 // The app shell version is the service worker cache this browser holds (sw.js), read from Cache Storage.
