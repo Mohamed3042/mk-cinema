@@ -8,6 +8,7 @@ import { mountFeed } from './feed.js';
 import { createBob } from './bob.js';
 import { openSheet, closeSheet, enableDrag } from './modal.js';
 import { mountAmbient, paleness } from './ambient.js';
+import { shuffleDeck, mountReel } from './reel.js';
 
 const main = document.querySelector('main');
 const topbar = document.querySelector('#topbar');
@@ -50,7 +51,8 @@ const iconPaths = {
   expand: '<path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/>', arrow: '<path d="m9 5 7 7-7 7"/>', alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/>',
   home: '<path d="M3 11.5 12 4l9 7.5M5.5 10v10h13V10M10 20v-5h4v5"/>', flame: '<path d="M12 3c.4 3 3.2 4.6 4.4 7A6.5 6.5 0 1 1 5.6 14c0-1.9.8-3.4 2-4.5.3 1.3.9 2 1.9 2.4C9.4 8.7 10.2 5.4 12 3Z"/>',
   list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>',
-  film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>'
+  film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>',
+  shuffle: '<path d="M3 7h3.2c1.9 0 3.1.9 4.2 2.5l3.2 5c1.1 1.6 2.3 2.5 4.2 2.5H21M3 17h3.2c1.4 0 2.4-.5 3.3-1.4M14.3 8.4c.9-.9 1.9-1.4 3.3-1.4H21M18 4l3 3-3 3M18 14l3 3-3 3"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${iconPaths[name] || ''}</svg>`;
 const title = (f, tag = 'h2', cls = '') => `<${tag} dir="auto" class="film-title ${cls}">${escape(splitTitle(f.title).name)}</${tag}>`;
@@ -64,7 +66,7 @@ function metaLine(f, { product = false } = {}) {
   return `${isNew(f) ? '<span class="new-badge">NEW</span>' : ''}${items.map(item => `<span>${escape(item)}</span>`).join('')}`;
 }
 const badges = f => `<div class="badges">${f.versions.map(v => `<span class="badge">${icon(v.kind)}${kindName(v.kind)}</span>`).join('')}</div>`;
-const poster = (f, cls = '') => `<img class="poster ${cls}" data-poster="${escape(f.id)}" alt="" width="640" height="800">`;
+const poster = (f, cls = '', lazy = false) => `<img class="poster ${cls}" data-poster="${escape(f.id)}" alt="" width="640" height="800"${lazy ? ' loading="lazy"' : ''}>`;
 const brand = '<span class="wordmark">MK <span>Cinema</span></span>';
 function header(back = false) {
   return `<header class="header ${back ? 'compact' : ''}">${back ? `<button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button>` : ''}<div class="brand">${brand}</div>${!back ? `<div class="header-actions"><button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div>` : ''}</header>`;
@@ -144,7 +146,7 @@ function chrome() {
   tabbar.hidden = desktop;
   if (chromeKey !== String(desktop)) {
     chromeKey = String(desktop);
-    topbar.innerHTML = `<div class="topbar-row"><button class="brand brand-button" data-tab="home" aria-label="MK Cinema home">${brand}</button>${desktop ? `<nav class="tabs" aria-label="Sections">${TABS.map(([id, label]) => `<button class="tab" data-tab="${id}" data-nav="${id}">${label}</button>`).join('')}<i class="tab-ink" aria-hidden="true"></i></nav>` : ''}<div class="header-actions">${desktop ? `<button class="icon-button" data-action="search" data-nav="search" aria-label="Search">${icon('search')}</button>` : ''}<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div></div>`;
+    topbar.innerHTML = `<div class="topbar-row"><button class="brand brand-button" data-tab="home" aria-label="MK Cinema home">${brand}</button>${desktop ? `<nav class="tabs" aria-label="Sections">${TABS.map(([id, label]) => `<button class="tab" data-tab="${id}" data-nav="${id}">${label}</button>`).join('')}<i class="tab-ink" aria-hidden="true"></i></nav>` : ''}<div class="header-actions"><button class="icon-button shuffle-button" data-action="shuffle" aria-label="Shuffle the whole cinema">${icon('shuffle')}<span>Shuffle</span></button>${desktop ? `<button class="icon-button" data-action="search" data-nav="search" aria-label="Search">${icon('search')}</button>` : ''}<button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div></div>`;
     tabbar.innerHTML = desktop ? '' : PHONE_TABS.map(([id, label, symbol]) => `<button data-nav="${id}" ${id === 'search' ? 'data-action="search"' : `data-tab="${id}"`}>${icon(symbol)}<span>${label}</span></button>`).join('');
   }
   const current = searching ? 'search' : tab;
@@ -212,7 +214,7 @@ function mount(next, html, { focus = true } = {}) {
 // details, a pale poster also deepens the shade so the white type stays readable.
 function markReady(img) {
   img.classList.add('is-ready'); img.parentElement.classList.add('is-ready');
-  if (img.matches('.billboard-poster, .hot-poster, .detail-poster')) img.parentElement.style.setProperty('--pale', paleness(img).toFixed(2));
+  if (img.matches('.billboard-poster, .hot-poster, .detail-poster, .reel-poster')) img.parentElement.style.setProperty('--pale', paleness(img).toFixed(2));
 }
 main.addEventListener('load', event => { if (event.target.matches?.('img.poster')) markReady(event.target); }, true);
 async function fillPosters(stamp) {
@@ -296,6 +298,39 @@ function browseView(all, progress) {
     : !featured ? `<section class="results"><div class="empty-list"><div class="state-icon">${icon('list')}</div><h2>Nothing here yet</h2><p>Films of this kind will appear when they are added.</p><button class="secondary" data-tab="home">Browse everything</button></div></section>`
     : `<section class="billboard" aria-label="${home ? 'Newest film' : 'Featured film'}" data-film="${escape(featured.id)}" data-preview="poster">${poster(featured, 'billboard-poster')}<video class="billboard-video" muted playsinline preload="none" aria-hidden="true" tabindex="-1"></video><div class="billboard-shade"></div><div class="billboard-copy"><p class="eyebrow" dir="auto">${escape(kicker(featured))}</p>${title(featured, 'h1')}<p class="hero-meta">${metaLine(featured)}<span class="meta-cuts">${cuts(featured)}</span></p><div class="blurb-wrap"><p class="blurb">${escape(featured.blurb)}</p></div><div class="billboard-actions"><button class="primary" data-action="hero-play" data-id="${escape(featured.id)}">${icon('play')}Play</button><button class="secondary" data-action="hero-info" data-id="${escape(featured.id)}">${icon('info')}More info</button></div></div><button class="icon-button billboard-tool" data-action="billboard-tool" aria-label="Unmute" hidden>${icon('mute')}</button></section><div class="shelves">${rows.map(([name, films]) => shelf(name, films, progress)).join('')}</div>`;
   return `${chips}${search}${body}<footer>${all.length} titles${demo ? ' · Demo collection' : ' · Your private collection'}</footer>`;
+}
+// Shuffle: the whole cinema as a reel, one film a screen, in a new order every time (reel.js). The reel's one video
+// is started inside the opening tap, so an iPhone lets it play with sound from then on.
+function openReel() {
+  if (!catalog || screen === 'reel') return;
+  const all = groupsOf(), rail = () => main.querySelector('.reel-rail .list-toggle');
+  mount('reel', reelView(shuffleDeck(all), all.length));
+  main.querySelector('.reel-video').play().catch(() => {});
+  live.reel = mountReel(main, {
+    source: id => source(findFilm(id)), icon, onClose: () => library(),
+    onActive: item => {
+      const f = findFilm(item.dataset.film), on = inList(listIds, titleIds(f.id)), button = rail();
+      button.dataset.id = f.id; button.setAttribute('aria-pressed', String(on));
+      button.setAttribute('aria-label', `${on ? 'Remove from' : 'Add to'} My List: ${f.title}`); button.innerHTML = icon(on ? 'check' : 'plus');
+      announce(`${splitTitle(f.title).name}, ${item.dataset.n} of ${all.length}`);
+    },
+    more: () => {
+      const track = main.querySelector('.reel-track'), lastFilm = findFilm(track.lastElementChild.dataset.film);
+      track.insertAdjacentHTML('beforeend', reelItems(shuffleDeck(all, { after: lastFilm })));
+      void fillPosters(revision);
+      return true;
+    },
+  });
+}
+function reelItems(deck) {
+  const prefer = desktopQuery.matches ? 'desktop' : 'phone';
+  return deck.map((f, index) => {
+    const cut = f.versions.find(v => v.kind === prefer) || f.versions[0];
+    return `<article class="reel-item" data-film="${escape(f.id)}" data-shape="${cut.kind}" data-n="${index + 1}" aria-label="${escape(f.title)}"><div class="reel-stage">${poster(f, 'reel-fill', index > 1)}${poster(f, 'reel-poster', index > 1)}<div class="reel-shade"></div><i class="reel-progress" aria-hidden="true"></i></div><div class="reel-copy"><p class="kicker" dir="auto">${escape(kicker(f))}</p>${title(f, 'h2', 'reel-title')}<p class="reel-meta">${metaLine(f)}</p><p class="blurb" dir="auto">${escape(f.blurb)}</p></div></article>`;
+  }).join('');
+}
+function reelView(deck, total) {
+  return `<section class="reel" aria-label="Shuffle: the whole cinema" data-total="${total}"><video class="reel-video" playsinline preload="auto" aria-hidden="true" tabindex="-1"></video><div class="reel-track">${reelItems(deck)}</div><div class="reel-top"><button class="icon-button round" data-reel="close" aria-label="Close shuffle">${icon('close')}</button><p class="reel-count" aria-hidden="true">${icon('shuffle')}<b>1 / ${total}</b></p></div><span class="reel-pause" aria-hidden="true">${icon('play')}</span><p class="reel-note" role="status"></p><div class="reel-rail"><button class="icon-button round reel-step" data-reel="prev" aria-label="Previous film">${icon('chevron')}</button><button class="icon-button round reel-step" data-reel="next" aria-label="Next film">${icon('chevron')}</button>${listButton(deck[0], 'reel-list')}<span class="reel-sound"><span class="reel-hint" aria-hidden="true">Tap for sound</span><button class="icon-button round" data-reel="sound" aria-pressed="true" aria-label="Mute">${icon('sound')}</button></span><button class="icon-button round" data-reel="fullscreen" aria-label="Full screen">${icon('expand')}</button></div></section>`;
 }
 function feedView(all) {
   const shown = all.slice(0, 24); // newest first; a long library does not become an endless feed
@@ -535,6 +570,7 @@ async function onClick(event) {
     case 'toggle-list': toggleMyList(button.dataset.id); break;
     case 'detail-mute': { const video=main.querySelector('.detail-video'); video.muted=!video.muted; button.setAttribute('aria-label',video.muted?'Unmute':'Mute'); button.setAttribute('aria-pressed',String(!video.muted)); button.innerHTML=icon(video.muted?'mute':'sound'); break; }
     case 'explore': exploreRow=button.dataset.row; gridMode=true; library(); main.querySelector('[data-action="clear-filter"]')?.focus({preventScroll:true}); break;
+    case 'shuffle': openReel(); break;
     case 'search': if(screen!=='library') break; if(tab!=='home') { tab='home'; activeFilter='All'; exploreRow=null; } searching=true; gridMode=true; library(); main.querySelector('#film-search').focus(); break;
     case 'close-search': searching=false; query=''; gridMode=activeFilter!=='All'; library(); main.querySelector('[data-action="search"]')?.focus() || document.querySelector('[data-action="search"]')?.focus(); break;
     case 'clear-filter': activeFilter='All'; query=''; searching=false; gridMode=false; exploreRow=null; library(); main.querySelector('.filters') && (main.querySelector('.filters').scrollLeft=0); main.querySelector('[data-filter="All"]')?.focus({preventScroll:true}); break;

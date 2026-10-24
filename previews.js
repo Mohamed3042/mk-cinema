@@ -4,10 +4,11 @@ import { PREVIEW_START } from './motion.js';
 // the cached stream, attempt 2 a fresh one (the short-lived link may have expired), attempt 3 a whole-film
 // download when canDownload is set (iPhone Safari refuses GitHub's octet-stream films as a stream).
 // onPlaying fires once a frame is on screen, after the jump to `start`, so the poster never flashes the first frame.
-export function startPreview(video, { getURL, canDownload = false, start = PREVIEW_START, onPlaying = () => {}, onEnded = () => {}, onFail = () => {} }) {
+// With `sound` (the Shuffle reel) it plays unmuted; if the browser refuses that, it carries on muted and calls onMuted.
+export function startPreview(video, { getURL, canDownload = false, start = PREVIEW_START, sound = false, onPlaying = () => {}, onEnded = () => {}, onFail = () => {}, onMuted = () => {} }) {
   const abort = new AbortController();
   let dead = false, attempt = 0, loaded = false, seeking = false, shown = false;
-  video.muted = true; video.playsInline = true; video.preload = 'auto'; video.loop = false;
+  video.muted = !sound; video.playsInline = true; video.preload = 'auto'; video.loop = false;
 
   const stop = () => {
     if (dead) return;
@@ -29,7 +30,7 @@ export function startPreview(video, { getURL, canDownload = false, start = PREVI
   const handlers = {
     loadedmetadata() {
       loaded = true;
-      seeking = Number.isFinite(video.duration) && video.duration > 0;
+      seeking = start > 0 && Number.isFinite(video.duration) && video.duration > 0;
       if (seeking) video.currentTime = video.duration * start;
     },
     seeked() { if (seeking) { seeking = false; video.play().catch(playError); reveal(); } },
@@ -43,7 +44,11 @@ export function startPreview(video, { getURL, canDownload = false, start = PREVI
     },
   };
   // Only a refusal to autoplay ends the preview here; a stream the browser cannot open arrives as an error event, which retries.
-  const playError = error => { if (error?.name === 'NotAllowedError') fail(); };
+  // A refusal of sound is tried once more, muted.
+  const playError = error => {
+    if (error?.name !== 'NotAllowedError' || dead) return;
+    if (!video.muted) { video.muted = true; onMuted(); video.play().catch(playError); } else fail();
+  };
   for (const [name, handler] of Object.entries(handlers)) video.addEventListener(name, handler);
   void load();
   return { stop };

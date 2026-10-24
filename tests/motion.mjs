@@ -790,14 +790,87 @@ try {
     await context.close();
   });
 
+  const reelCount = page => page.locator('.reel-count b').textContent();
+  const reelLive = page => page.locator('.reel-item.is-active.is-live').waitFor({ timeout: 12000 });
+  const titleCount = new Set(catalog.films.map(f => f.group || f.id)).size;
+  await record('Shuffle: the whole cinema plays as a reel, one film a screen; keys, pause, sound and the end move it on', async () => {
+    const { context, page } = await session();
+    await loaded(page);
+    await page.locator('[data-action=shuffle]').click();
+    await page.locator('main.reel').waitFor();
+    assert.equal(await page.locator('#topbar').isHidden(), true, 'the reel is full screen');
+    const films = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
+    assert.equal(films.length, titleCount, 'every title once');
+    assert.equal(new Set(films).size, titleCount, 'no title twice');
+    await reelLive(page);
+    assert.equal(await reelCount(page), `1 / ${titleCount}`);
+    assert.ok(await page.locator('.reel-video').evaluate(video => video.src.startsWith('blob:') && !video.paused && video.closest('.reel-item').classList.contains('is-active')), 'the first film plays inside its own screen');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '));
+    await reelLive(page);
+    assert.notEqual(await page.locator('.reel-item.is-active').getAttribute('data-film'), films[0], 'the next film is on screen');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('1 '));
+    await reelLive(page);
+    await page.keyboard.press(' ');
+    assert.ok(await page.locator('.reel-video').evaluate(video => video.paused), 'Space pauses');
+    assert.equal(await page.locator('.reel.is-paused').count(), 1, 'the glass play sign shows');
+    await page.keyboard.press(' ');
+    assert.equal(await page.locator('.reel.is-paused').count(), 0, 'Space plays again');
+    await page.keyboard.press('m');
+    assert.equal(await page.locator('[data-reel=sound]').getAttribute('aria-pressed'), 'false', 'm mutes');
+    assert.ok(await page.locator('.reel-video').evaluate(video => video.muted));
+    await page.locator('.reel-video').evaluate(video => { video.currentTime = Math.max(0, video.duration - 0.3); });
+    await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '), null, { timeout: 8000 });
+    assert.ok(await page.locator('.reel-video').evaluate(video => video.muted), 'the sound choice carries to the next film');
+    const tiny = await page.locator('.reel button').evaluateAll(nodes => nodes.filter(el => { const r = el.getBoundingClientRect(); return r.width && (r.width < 43 || r.height < 43); }).length);
+    assert.equal(tiny, 0, 'reel controls keep 44 px targets');
+    await page.keyboard.press('Escape');
+    await page.locator('main.library').waitFor();
+    assert.equal(await page.locator('.reel-video').count(), 0, 'closing leaves no video behind');
+    await context.close();
+  });
+
+  await record('Shuffle on a phone: a swipe moves on, a 9:16 cut fills the screen, and the reel never runs out', async () => {
+    const { context, page } = await session({ viewport: PHONE, phone: true });
+    await loaded(page);
+    await page.locator('#topbar [data-action=shuffle]').tap();
+    await reelLive(page);
+    const active = await page.locator('.reel-item.is-active').evaluate(item => ({ shape: item.dataset.shape, fit: getComputedStyle(item.querySelector('.reel-video')).objectFit }));
+    assert.equal(active.fit, active.shape === 'phone' ? 'cover' : 'contain', 'a phone cut fills the portrait screen; a wide one is shown whole');
+    for (let n = 2; n <= titleCount - 1; n++) {
+      await page.locator('.reel-track').evaluate(track => track.scrollBy({ top: track.clientHeight }));
+      await page.waitForFunction(wanted => document.querySelector('.reel-count b').textContent.startsWith(`${wanted} `), n);
+    }
+    const all = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
+    assert.equal(all.length, titleCount * 2, 'a second round was drawn before the first ran out');
+    assert.notEqual(all[titleCount], all[titleCount - 1], 'the new round does not repeat the film that just played');
+    await page.locator('[data-reel=close]').tap();
+    await page.locator('main.library').waitFor();
+    await context.close();
+  });
+
+  await record('Shuffle with reduced motion: a film that ends waits instead of moving on', async () => {
+    const { context, page } = await session({ reduced: true });
+    await loaded(page);
+    await page.locator('[data-action=shuffle]').click();
+    await reelLive(page);
+    await page.locator('.reel-video').evaluate(video => { video.currentTime = Math.max(0, video.duration - 0.3); });
+    await page.locator('.reel-item.is-active.is-ended').waitFor({ timeout: 8000 });
+    assert.equal(await reelCount(page), `1 / ${titleCount}`, 'still on the first film');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(() => document.querySelector('.reel-count b').textContent.startsWith('2 '));
+    await context.close();
+  });
+
   await record('the service worker caches the new motion files and the cache name moved on', async () => {
     const { context, page } = await session({ extra: { serviceWorkers: 'allow', reducedMotion: 'reduce' } });
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v6'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js']) assert.ok(cached['mkc-shell-v6'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v6'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v7'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js']) assert.ok(cached['mkc-shell-v7'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v7'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await context.close();
   });
 } finally {

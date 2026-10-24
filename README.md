@@ -48,6 +48,10 @@ Search and chips open a grid with a title count. Clear filters returns to the ho
 - **New & Hot** is a vertical feed of every title, newest first. The film nearest the middle of the screen moves only while you scroll and stops about 50 ms after the last input; scrolling back rewinds it. It is the owner's pop-and-ship scroll film, adapted (`chase` in `motion.js`, `feed.js`).
 - **My List** keeps film ids in `mkc.list` (demo: `mkc.demo.list`). Nothing else is stored, and there is no token. A title with several cuts counts as listed when any cut is.
 
+### Shuffle
+
+**Shuffle** in the top bar plays the whole cinema as a reel: one film fills the screen and plays from the start with sound, and when it ends the next one comes up. Swipe up or down on a phone; on a desktop use the wheel, the arrow keys or the arrows on the right. Tap the film to pause, **m** mutes, **Esc** or the close button returns to the home. The order is new every time: each title appears once per round, one product never plays twice in a row when that can be avoided, and a new round is drawn before the last one runs out (`shuffleDeck` in `reel.js`). A phone plays the 9:16 cut and a desktop the 16:9 cut, each falling back to the other; a cut in the screen's shape fills it, any other is shown whole over a blur of its poster. There is one video element, started inside the opening tap, so an iPhone keeps playing with sound from film to film; if a browser still refuses sound, the reel plays muted and shows **Tap for sound**. A film that cannot play here shows a note and moves on after 2.5 s. With reduced motion a film that ends waits instead of moving on. Nothing is stored.
+
 ### Previews and autoplay
 
 - The billboard shows its poster, crossfades to the muted film after about 2 s (starting about 10% in), quiets its blurb and shrinks its title after about 6 s, and returns to the poster with a replay button at the end. A round button mutes and unmutes.

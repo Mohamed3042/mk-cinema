@@ -161,3 +161,38 @@ test('film light: the shade under white type deepens only over pale posters', as
   assert.equal(paleFor(fill(250, 250, 250)), 1, 'a white poster gets the full shade');
   assert.ok(Math.abs(paleFor(fill(166, 166, 166)) - 0.5) < 0.02, 'in between, in between');
 });
+
+// A small seeded random, so shuffles in tests are repeatable.
+const seeded = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const titles = Array.from({ length: 30 }, (_, index) => ({ id: `t${index}`, product: ['MK Voice', 'Talent Atlas', 'MK Business OS', 'More films'][index % 4] }));
+
+test('shuffle reel: every title once, in a new order for each seed', async () => {
+  const { shuffleDeck } = await import('../reel.js');
+  const a = shuffleDeck(titles, { random: seeded(1) }), b = shuffleDeck(titles, { random: seeded(2) });
+  assert.deepEqual(a.map(t => t.id).sort(), titles.map(t => t.id).sort(), 'nothing lost, nothing doubled');
+  assert.notDeepEqual(a.map(t => t.id), b.map(t => t.id), 'another seed, another order');
+  assert.deepEqual(shuffleDeck(titles, { random: seeded(1) }).map(t => t.id), a.map(t => t.id), 'same seed, same order');
+  assert.notDeepEqual(a.map(t => t.id), titles.map(t => t.id), 'not the catalog order');
+  assert.deepEqual(titles.map(t => t.id), Array.from({ length: 30 }, (_, index) => `t${index}`), 'the input is not changed');
+});
+
+test('shuffle reel: one product never plays twice in a row when it can be avoided', async () => {
+  const { shuffleDeck } = await import('../reel.js');
+  for (let seed = 1; seed <= 200; seed++) {
+    const deck = shuffleDeck(titles, { random: seeded(seed) });
+    deck.forEach((title, index) => { if (index) assert.notEqual(title.product, deck[index - 1].product, `seed ${seed}: ${deck[index - 1].id} then ${title.id}`); });
+  }
+  const lopsided = [...Array.from({ length: 8 }, (_, index) => ({ id: `v${index}`, product: 'MK Voice' })), { id: 'x', product: 'Talent Atlas' }];
+  assert.equal(shuffleDeck(lopsided, { random: seeded(3) }).length, 9, 'a lopsided cinema still plays every title');
+});
+
+test('shuffle reel: the next round never starts with the film that just played, nor its product', async () => {
+  const { shuffleDeck } = await import('../reel.js');
+  for (let seed = 1; seed <= 200; seed++) {
+    const after = titles[seed % titles.length], deck = shuffleDeck(titles, { random: seeded(seed), after });
+    assert.notEqual(deck[0].id, after.id, `seed ${seed}`);
+    assert.notEqual(deck[0].product, after.product, `seed ${seed}`);
+  }
+  const single = [{ id: 'only', product: 'MK Voice' }, { id: 'two', product: 'MK Voice' }];
+  assert.notEqual(shuffleDeck(single, { random: seeded(9), after: single[0] })[0].id, 'only', 'even with one product, never the same film twice');
+});
