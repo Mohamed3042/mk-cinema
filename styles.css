@@ -20,8 +20,10 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 /* Liquid Glass: Netflix's layout with Apple TV calm. Ink black lit by the film on show (ambient.js), frosted
-   capsules for the controls that float over film, and one white pill for the action that matters. */
-:root{--canvas:#05060a;--surface:#11131a;--raised:#1b1e27;--rule:rgba(255,255,255,.14);--text:#fff;--muted:rgba(235,235,245,.7);--gold:#efd3a0;--glass:rgba(255,255,255,.12);--glass-hover:rgba(255,255,255,.2);--glass-line:rgba(255,255,255,.16);--glass-edge:inset 0 1px 0 rgba(255,255,255,.18);--smoke:rgba(12,13,18,.42);--frost:blur(26px) saturate(180%);--panel:rgba(20,22,29,.94);--card-radius:12px}
+   capsules for the controls that float over film, and one white pill for the action that matters. --muted-lit is
+   the secondary text that sits on the film light (row and result counts, New & Hot dates): brighter, so it stays
+   AA over a red or pale wash. */
+:root{--canvas:#05060a;--surface:#11131a;--raised:#1b1e27;--rule:rgba(255,255,255,.14);--text:#fff;--muted:rgba(235,235,245,.7);--muted-lit:rgba(235,235,245,.82);--gold:#efd3a0;--glass:rgba(255,255,255,.12);--glass-hover:rgba(255,255,255,.2);--glass-line:rgba(255,255,255,.16);--glass-edge:inset 0 1px 0 rgba(255,255,255,.18);--smoke:rgba(12,13,18,.42);--frost:blur(26px) saturate(180%);--panel:rgba(20,22,29,.94);--card-radius:12px}
 html{scrollbar-color:rgba(255,255,255,.22) var(--canvas)}
 body{background:var(--canvas);caret-color:#fff}
 ::selection{background:rgba(255,255,255,.3);color:#fff}
@@ -30,13 +32,15 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #fff;
 .header-actions{margin-left:auto;display:flex;gap:10px}
 .header-actions .icon-button,.header>.icon-button{width:44px;height:44px;border-radius:50%;border:1px solid var(--glass-line);background:var(--glass);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge);color:#fff;transition:background .25s}
 .header-actions .icon-button:hover,.header>.icon-button:hover{background:var(--glass-hover)}
-.library{max-width:none;padding:0 0 max(32px,env(safe-area-inset-bottom));animation:none;isolation:isolate;overflow-x:clip}
+.library{max-width:none;padding:0 0 max(32px,env(safe-area-inset-bottom));animation:none;isolation:isolate;overflow:clip}
 .library h1,.library h2,.library .film-title{font-family:DM,Arabic,sans-serif;font-weight:600;line-height:1.15}
 /* The film's light: a tiny wash of the poster on show, spread under the top of the page, plus a left shade so
-   the rows continue the billboard's shade without a seam. */
+   the rows continue the billboard's shade without a seam. The library clips both ways, so a short page never
+   scrolls on into the light's empty tail. In New & Hot the light stays in the window and follows the playing film. */
 .library::before,.library::after{content:"";position:absolute;inset:0 0 auto;height:160vh;z-index:-1;pointer-events:none;-webkit-mask-image:linear-gradient(#000 50%,transparent);mask-image:linear-gradient(#000 50%,transparent)}
 .library::before{background:var(--ambient,none) 50% 30%/cover no-repeat;filter:blur(56px) saturate(1.45) brightness(.45);transform:scale(1.15);opacity:.9}
 .library::after{background:linear-gradient(90deg,rgba(5,6,10,.62),rgba(5,6,10,.3) 32%,transparent 64%)}
+.library[data-tab=new]::before,.library[data-tab=new]::after{position:fixed;inset:0;height:auto}
 .filters{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:6px 20px 12px;scroll-padding:20px}
 .filters::-webkit-scrollbar{display:none}
 /* A 44 px tap target that draws a slimmer 36 px pill inside it. */
@@ -85,7 +89,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #fff;
 .cut-count{position:absolute;z-index:1;top:10px;right:10px;padding:3px 9px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.16);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);color:#fff;font-size:10.5px;font-weight:600}
 .watch-progress{position:absolute;z-index:2;left:12px;right:12px;bottom:8px;width:auto;height:3px;margin:0;border-radius:2px}
 .results{padding:28px 20px;min-height:65svh}.results-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px}
-.results h1{font-size:28px;letter-spacing:-.03em;margin:0 0 6px}.results-count{font-size:14px;color:var(--muted)}
+.results h1{font-size:28px;letter-spacing:-.03em;margin:0 0 6px}.results-count{font-size:14px;color:var(--muted-lit)}
 .results-head .text-button{flex-shrink:0;min-height:44px;padding:0 18px;border:1px solid var(--glass-line);border-radius:999px;background:var(--glass);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge);color:#fff;font-weight:600;font-size:14px}
 .results-head .text-button:hover{background:var(--glass-hover)}
 .results-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 10px}
@@ -140,8 +144,8 @@ body:has(dialog[open]){overflow:hidden}
   .detail-shade::after{background:linear-gradient(transparent 20%,rgba(20,22,29,.85) 60%,rgb(20,22,29)),linear-gradient(90deg,rgba(20,22,29,.8),transparent 65%)}
 }
 /* Without frosted glass (older browsers, or "Reduce transparency"), the same controls sit on solid ink. */
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--glass:rgba(40,43,52,.92);--glass-hover:rgba(58,62,74,.95);--smoke:rgba(24,26,33,.9)}.library .secondary{background:rgba(52,56,66,.94)}}
-@media(prefers-reduced-transparency:reduce){:root{--glass:#262931;--glass-hover:#343843;--smoke:#1c1f26;--frost:none;--panel:#14161d}.library .secondary{background:#30333c}.library::before{opacity:.5}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--glass:rgba(40,43,52,.92);--glass-hover:rgba(58,62,74,.95);--smoke:rgba(24,26,33,.9)}.library .secondary{background:rgba(52,56,66,.94)}.cut-count,.center-play{background:rgba(40,43,52,.92)}}
+@media(prefers-reduced-transparency:reduce){:root{--glass:#262931;--glass-hover:#343843;--smoke:#1c1f26;--frost:none;--panel:#14161d}.library .secondary{background:#30333c}.library::before{opacity:.5}.cut-count,.center-play{background:#262931}}
 /* The screens around the library (connect, loading, offline, empty, save) wear the same glass: DM Sans headings,
    white pills, hairline rules, a glass ring for the state icon. The old stage lights and curtain are gone. */
 h1,h2,.film-title{font-family:DM,Arabic,sans-serif;font-weight:600}
@@ -168,7 +172,9 @@ input[type=password]{background:rgba(255,255,255,.06);border:1px solid var(--gla
 .save-film>.save-poster,.save-ready .save-poster{width:100%;height:auto;aspect-ratio:16/9;border-radius:16px}
 .save-film>.save-poster.tall{width:auto;height:340px;aspect-ratio:9/16}
 .save-ready .save-poster.tall{height:280px}
+.save-film .kicker{margin:16px 0 6px}.save-film .kicker+h1{margin-top:0}
 .save-version{border-color:var(--glass-line);border-radius:999px;background:var(--glass);color:#fff}
+.save-film .save-version{margin-left:0;margin-right:0}
 .save-panel{background:transparent;border-top-color:var(--rule)}
 .percent{font-family:DM,sans-serif;font-weight:600;letter-spacing:-.03em;color:#fff;font-variant-numeric:tabular-nums}
 progress{accent-color:#fff}
