@@ -590,6 +590,7 @@ try {
     assert.match(welcome, /Hi Mom/);
     assert.match(welcome, /Mohamed shared his cinema with you/);
     assert.doesNotMatch(welcome, /github|token/i, 'no GitHub words for a guest');
+    assert.equal(await page.locator('.welcome-tip').innerText(), 'Add it to your home screen to come back in one tap.', 'Android and computers share storage with their home-screen app');
     await page.locator('.welcome-card.is-ready').first().waitFor();
     await inviteShot(page, 'guest-welcome');
     await checkLayout(page);
@@ -778,6 +779,135 @@ try {
     await page.locator('main.welcome').waitFor();
     assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.guest);
     await context.close();
+  });
+
+  // Home-screen apps. An iPhone's keeps its own storage (WebKit bug 181849) and opens the start address, so a key saved
+  // in Safari is not there. Chrome cannot emulate either: navigator.standalone (iPhone only) and the display-mode
+  // query (CDP ignores it) are stubbed. A new context is a new storage, like a newly added home-screen app.
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
+  const iphone = (context, homeScreen) => context.addInitScript(on => Object.defineProperty(Navigator.prototype, 'standalone', { get: () => on, configurable: true }), homeScreen);
+  const displayStandalone = context => context.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    window.matchMedia = query => { const list = real(query); if (/display-mode:\s*standalone/u.test(query)) Object.defineProperty(list, 'matches', { value: true }); return list; };
+  });
+  // The clipboard answers what the test put in window.__clipboard; an Error there is a refusal. Like an iPhone, it
+  // refuses a read that is not made inside the tap itself.
+  const clipboard = context => context.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: { readText: async () => {
+    if (window.event?.type !== 'click') throw new DOMException('Not inside a tap', 'NotAllowedError');
+    const value = window.__clipboard; if (value instanceof Error) throw value; return value ?? '';
+  } }, configurable: true }));
+  const pasteStatus = (page, pattern) => page.waitForFunction(source => new RegExp(source).test(document.querySelector('#paste-status')?.textContent || ''), pattern.source);
+
+  await record('invite: a home-screen app with no key asks for the invite link (clipboard or box), never for a token', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await displayStandalone(context);
+    await clipboard(context);
+    await mockGitHub(context);
+    const page = await context.newPage();
+    watch(page, 'invite paste');
+    await page.goto(`${origin}/`);
+    await page.locator('main.invite-paste').waitFor();
+    const text = await mainText(page);
+    assert.match(text, /Paste your invite link/);
+    assert.match(text, /Copy the link Mohamed sent you/);
+    assert.doesNotMatch(text, /github|token/i, "never the owner's token screen");
+    assert.equal(await page.locator('#connect-form').count(), 0);
+    await inviteShot(page, 'guest-paste');
+    await checkLayout(page);
+    // Going offline leaves it be: Retry on the offline screen would try a missing key and show the token screen.
+    await page.evaluate(() => { window.__offline = new Promise(resolve => addEventListener('offline', () => setTimeout(resolve, 0), { once: true })); });
+    await context.setOffline(true);
+    await page.evaluate(() => window.__offline);
+    assert.equal(await page.locator('main.invite-paste').count(), 1, 'offline keeps the paste screen');
+    await context.setOffline(false);
+    const paste = page.getByRole('button', { name: 'Paste invite link', exact: true });
+    await page.evaluate(() => { window.__clipboard = 'see you at 8'; });
+    await paste.click();
+    await pasteStatus(page, /isn't an invite link/);
+    // A refused or empty clipboard hands over to the box.
+    await page.evaluate(() => { window.__clipboard = new DOMException('Refused by test', 'NotAllowedError'); });
+    await paste.click();
+    await pasteStatus(page, /Tap the box, then choose Paste/);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'invite-paste', 'the box takes focus');
+    // A broken link and another app's link are refused in the box, and nothing is stored.
+    const open = page.getByRole('button', { name: 'Open invite', exact: true });
+    await page.locator('#invite-paste').fill(`${origin}/#invite=bm90LWpzb24`);
+    await open.click();
+    await pasteStatus(page, /incomplete/);
+    assert.equal(await page.locator('#invite-paste').getAttribute('aria-invalid'), 'true');
+    await page.locator('#invite-paste').fill(`https://example.test/another-app/${inviteHash('Mom', FAKE.guest)}`);
+    assert.equal(await page.locator('#invite-paste').getAttribute('aria-invalid'), null, 'typing clears the error');
+    await open.click();
+    await pasteStatus(page, /for another app/);
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), null, 'a refused link stores nothing');
+    await inviteShot(page, 'guest-paste-refused');
+    await checkLayout(page);
+    // The shared message with the link in it opens the invite on the same path as opening the link.
+    await page.evaluate(link => { window.__clipboard = `Mohamed shared his cinema with you. ${link}`; }, `${origin}/${inviteHash('Mom', FAKE.guest)}`);
+    await paste.click();
+    await page.locator('main.welcome').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.guest);
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('mkc.guest'))), { name: 'Mom', left: false });
+    assert.equal(await page.locator('.welcome-tip').innerText(), 'Keep this link: tap it any time to watch.', 'no home-screen tip inside the home-screen app');
+    await page.getByRole('button', { name: 'Start watching', exact: true }).click();
+    await page.locator('main.library').waitFor();
+    await page.reload();
+    await page.locator('main.library').waitFor(); // the next launch opens the cinema
+    await context.close();
+  });
+
+  await record('invite: on an iPhone the welcome says keep the link; its home-screen app pastes it once', async () => {
+    const link = `${origin}/${inviteHash('Mom', FAKE.guest)}`;
+    const safari = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: IPHONE, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await iphone(safari, false);
+    await mockGitHub(safari);
+    let page = await safari.newPage();
+    watch(page, 'iPhone Safari');
+    await page.goto(link);
+    await page.locator('main.welcome').waitFor();
+    assert.equal(await page.locator('.welcome-tip').innerText(), 'Keep this link: tap it any time to watch.', 'no home-screen promise on an iPhone');
+    await page.locator('.welcome-card.is-ready').first().waitFor();
+    await inviteShot(page, 'guest-welcome-iphone');
+    await checkLayout(page);
+    await safari.close();
+    const app = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: IPHONE, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await iphone(app, true);
+    await mockGitHub(app);
+    page = await app.newPage();
+    watch(page, 'iPhone home screen');
+    await page.goto(`${origin}/`);
+    await page.locator('main.invite-paste').waitFor();
+    assert.doesNotMatch(await mainText(page), /github|token/i);
+    await page.locator('#invite-paste').fill(link); // a whole link in the box opens at once
+    await page.locator('main.welcome').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.guest);
+    await page.getByRole('button', { name: 'Start watching', exact: true }).click();
+    await page.locator('main.library').waitFor();
+    // There a tapped link opens Safari, not the home-screen app, so after Leave the way back is a paste.
+    await page.locator('#tabbar [data-tab=settings]').click();
+    await page.getByRole('button', { name: 'Leave', exact: true }).click();
+    await page.locator('main.invite-left').waitFor();
+    assert.match(await mainText(page), /To come back, paste his invite link\./);
+    assert.equal(await page.locator('.settings-button').count(), 0, 'no Settings without a key: its rows talk about tokens');
+    await inviteShot(page, 'guest-left-home-screen');
+    await checkLayout(page);
+    await page.getByRole('button', { name: 'Paste his invite link', exact: true }).click();
+    await page.locator('main.invite-paste').waitFor();
+    // The owner's own phone: one quiet button leads to his connect screen, and back.
+    await page.getByRole('button', { name: "I'm Mohamed", exact: true }).click();
+    await page.locator('main.connect').waitFor();
+    await page.getByRole('button', { name: 'I have an invite link', exact: true }).click();
+    await page.locator('main.invite-paste').waitFor();
+    await page.getByRole('button', { name: "I'm Mohamed", exact: true }).click();
+    await page.locator('main.connect').waitFor();
+    await inviteShot(page, 'home-screen-connect');
+    await checkLayout(page);
+    // An invite link pasted into the token box opens the invite; it is never saved as a token.
+    await page.getByLabel('GitHub token', { exact: true }).fill(link);
+    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await page.locator('main.welcome').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('mkc.token')), FAKE.guest);
+    await app.close();
   });
 
   await record('invite: no key ever appears in a request URL, on the wire or in the console', async () => {

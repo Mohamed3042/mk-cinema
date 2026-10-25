@@ -10,9 +10,9 @@ import { openSheet, closeSheet, enableDrag } from './modal.js';
 import { mountAmbient, paleness } from './ambient.js';
 import { mountReel } from './reel.js';
 import { mountPlayer } from './player.js';
-import { watchViewport, diagnostics } from './viewport.js';
+import { watchViewport, diagnostics, ios, homeScreenApp } from './viewport.js';
 import { KINDS, readSettings, writeSettings, toggleKind, reelKinds, reelDeck, nextRound } from './settings.js';
-import { OWNER, REPO, NAME_MAX, TOKENS_PAGE, takeInvite, readGuest, writeGuest, readInvites, addInvite, removeInvite, tokenPageURL, inviteLink, cleanName, isFineGrained } from './invite.js';
+import { OWNER, REPO, NAME_MAX, TOKENS_PAGE, takeInvite, inviteFromText, readGuest, writeGuest, readInvites, addInvite, removeInvite, tokenPageURL, inviteLink, cleanName, isFineGrained } from './invite.js';
 
 // An invite link carries a guest's key in the fragment (#invite=…). It is read and removed from the address first,
 // before anything else runs; browsers never send a fragment to a server.
@@ -70,6 +70,7 @@ const iconPaths = {
   list: '<path d="M4 6h11M4 12h7M4 18h7M18 11v8m-4-4h8"/>', plus: '<path d="M12 5v14M5 12h14"/>', mute: '<path d="M3 9h4l5-5v16l-5-5H3ZM16 9l5 6m0-6-5 6"/>', chevron: '<path d="m6 9 6 6 6-6"/>',
   film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/>',
   reels: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M3.5 8.5h17M8.5 3.5l2.6 5M14 3.5l2.6 5"/><path d="M10.4 12.2v4.6l4-2.3Z" fill="currentColor" stroke="none"/>',
+  paste: '<path d="M9 4.5H7A2.5 2.5 0 0 0 4.5 7v12A2.5 2.5 0 0 0 7 21.5h10a2.5 2.5 0 0 0 2.5-2.5V7A2.5 2.5 0 0 0 17 4.5h-2"/><rect x="9" y="2.5" width="6" height="4" rx="1.5"/><path d="M8.5 12h7M8.5 16h4.5"/>',
   share: '<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M6 11H5v10h14V11h-1"/>', copy: '<rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/>',
   people: '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20a6.2 6.2 0 0 1 12.4 0"/><circle cx="17.2" cy="9.2" r="2.6"/><path d="M16.4 14.1A5 5 0 0 1 21.4 19"/>',
   ticket: '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4Z"/><path d="M15 6v2m0 3v2m0 3v2"/>',
@@ -90,6 +91,8 @@ function metaLine(f, { product = false } = {}) {
 const badges = f => `<div class="badges">${f.versions.map(v => `<span class="badge">${icon(v.kind)}${kindName(v.kind)}</span>`).join('')}</div>`;
 const poster = (f, cls = '', lazy = false) => `<img class="poster ${cls}" data-poster="${escape(f.id)}" alt="" width="640" height="800"${lazy ? ' loading="lazy"' : ''}>`;
 const brand = '<span class="wordmark">MK <span>Cinema</span></span>';
+// Guest screens with no key have no Settings: its Connection rows talk about tokens and lead to the connect form.
+const plainHeader = `<header class="header"><div class="brand">${brand}</div></header>`;
 function header(back = false) {
   return `<header class="header ${back ? 'compact' : ''}">${back ? `<button class="icon-button" data-action="back" aria-label="Back to film">${icon('back')}</button>` : ''}<div class="brand">${brand}</div>${!back ? `<div class="header-actions"><button class="icon-button settings-button" data-action="settings" aria-label="Settings">${icon('settings')}</button></div>` : ''}</header>`;
 }
@@ -307,7 +310,7 @@ async function fillPosters(stamp) {
 function clearPosters() { for (const url of posterURLs.values()) URL.revokeObjectURL(url); posterURLs.clear(); }
 function connect(error = '') {
   screen = 'connect'; restore = () => connect(error);
-  mount('connect', `${header()}<section class="connect-content"><h1>Connect GitHub</h1><p>Open your private film library.<br>Paste a read-only token once.</p><form id="connect-form"><label for="token">GitHub token</label><input id="token" type="password" placeholder="Paste token" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="token-help${error ? ' token-error' : ''}" ${error ? 'aria-invalid="true"' : ''}><p id="token-help" class="small">Stored only in this browser.</p>${error ? `<p class="error-copy" id="token-error" role="alert">${icon('alert')}<span>${escape(error)}<br><span class="muted">Paste a new token, then try again.</span></span></p>` : ''}<section class="token-help"><h2>How to make the token</h2><ol><li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Fine-grained token ${icon('arrow')}</a></li><li>Only select repositories:<br><strong>mk-cinema-library</strong></li><li>Contents: Read-only</li></ol></section><button class="primary" type="submit">${error ? 'Retry connection' : 'Connect'}</button></form></section>`);
+  mount('connect', `${header()}<section class="connect-content"><h1>Connect GitHub</h1><p>Open your private film library.<br>Paste a read-only token once.</p><form id="connect-form"><label for="token">GitHub token</label><input id="token" type="password" placeholder="Paste token" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="token-help${error ? ' token-error' : ''}" ${error ? 'aria-invalid="true"' : ''}><p id="token-help" class="small">Stored only in this browser.</p>${error ? `<p class="error-copy" id="token-error" role="alert">${icon('alert')}<span>${escape(error)}<br><span class="muted">Paste a new token, then try again.</span></span></p>` : ''}<section class="token-help"><h2>How to make the token</h2><ol><li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Fine-grained token ${icon('arrow')}</a></li><li>Only select repositories:<br><strong>mk-cinema-library</strong></li><li>Contents: Read-only</li></ol></section><button class="primary" type="submit">${error ? 'Retry connection' : 'Connect'}</button></form>${homeScreenApp() && !token ? '<button class="text-button paste-back" data-action="paste-screen">I have an invite link</button>' : ''}</section>`);
 }
 function loading() {
   restore = () => void loadLibrary();
@@ -566,10 +569,45 @@ const GUEST_SCREENS = {
 };
 function guestScreen(kind) {
   const [symbol, heading, copy] = GUEST_SCREENS[kind];
+  // On an iPhone a tapped link opens Safari, not the home-screen app, so there the way back is a paste.
+  const pasteBack = kind === 'invite-left' && homeScreenApp();
   const actions = kind === 'invite-ended' ? `<button class="primary" data-action="retry">${icon('retry')}Try again</button><button class="text-button" data-action="leave">Forget this invite</button>`
-    : kind === 'invite-bad' && token ? `<button class="primary" data-action="retry">${icon('play')}Open the cinema</button>` : '';
+    : kind === 'invite-bad' && token ? `<button class="primary" data-action="retry">${icon('play')}Open the cinema</button>`
+    : pasteBack ? `<button class="primary" data-action="paste-screen">${icon('paste')}Paste his invite link</button>` : '';
   screen = kind; restore = () => guestScreen(kind);
-  mount(kind, `${header()}<section class="recovery guest-state"><div class="recovery-copy"><div class="state-icon">${icon(symbol)}</div><h1>${heading}</h1><p>${copy}</p></div>${actions ? `<div class="guest-actions">${actions}</div>` : ''}</section>`);
+  mount(kind, `${token ? header() : plainHeader}<section class="recovery guest-state"><div class="recovery-copy"><div class="state-icon">${icon(symbol)}</div><h1>${heading}</h1><p>${pasteBack ? 'To come back, paste his invite link.' : copy}</p></div>${actions ? `<div class="guest-actions">${actions}</div>` : ''}</section>`);
+}
+// An iPhone's home-screen app keeps a storage of its own (WebKit bug 181849) and opens the app's start address, so the
+// key a guest saved in Safari is not there. With no key, a home-screen app asks for the invite link, once, and opens it
+// on the same path as a tapped link. No GitHub words: the owner's own phone has one quiet way to his connect screen,
+// which leads back here.
+function pasteScreen() {
+  screen = 'invite-paste'; restore = pasteScreen;
+  mount('invite-paste', `${plainHeader}<section class="recovery guest-state"><div class="recovery-copy"><div class="state-icon">${icon('ticket')}</div><h1>Paste your invite link</h1><p>Copy the link ${OWNER} sent you,<br>then paste it here once.</p></div><div class="guest-actions"><button class="primary" data-action="paste-invite">${icon('paste')}Paste invite link</button><form class="paste-form" id="paste-form" novalidate><label for="invite-paste">Or paste it in this box</label><input class="field" id="invite-paste" type="text" inputmode="url" placeholder="https://…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" aria-describedby="paste-status"><p class="invite-status" id="paste-status" role="status"></p><button class="secondary" type="submit">Open invite</button></form><button class="text-button" data-action="connect">I'm ${OWNER}</button></div></section>`);
+}
+// The paste button reads the clipboard inside the tap (iPhone shows its Paste bubble); a refusal hands over to the box.
+async function pasteInvite() {
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch { /* no clipboard, or the person said no */ }
+  await openPasted(text);
+}
+async function openPasted(text) {
+  const found = inviteFromText(text, location.href);
+  if (found?.token) { await openInvite(found); return; }
+  const field = main.querySelector('#invite-paste'), status = main.querySelector('#paste-status');
+  if (!field) return;
+  const empty = !String(text ?? '').trim();
+  status.textContent = empty ? 'Tap the box, then choose Paste.' : found?.other ? `That link is for another app. Paste the MK Cinema link ${OWNER} sent you.`
+    : found?.bad ? 'This invite link is incomplete. Copy the whole link, then paste it again.' : `That isn't an invite link. Copy the whole link ${OWNER} sent you, then paste it again.`;
+  if (empty) { delete status.dataset.tone; field.removeAttribute('aria-invalid'); } else { status.dataset.tone = 'error'; field.setAttribute('aria-invalid', 'true'); }
+  field.focus();
+}
+// A whole link pasted into the box opens at once; anything else waits for Open invite.
+function pasteTyped(field) {
+  const status = main.querySelector('#paste-status');
+  field.removeAttribute('aria-invalid'); status.textContent = ''; delete status.dataset.tone;
+  const found = inviteFromText(field.value, location.href);
+  if (found?.token) void openInvite(found);
 }
 function inviteOwnerChoice(arrived) {
   pendingInvite = arrived; screen = 'invite-owner'; restore = () => inviteOwnerChoice(arrived);
@@ -592,10 +630,11 @@ async function acceptInvite(arrived) {
   welcome();
 }
 // The welcome loads the cinema behind it, so Start watching opens at once and an ended key shows its screen.
+// An iPhone's home-screen app would not have the key (see pasteScreen), so there the tip is to keep the link.
 let welcomeLoad;
 function welcome() {
   restore = welcome;
-  mount('welcome', `<section class="welcome" aria-labelledby="welcome-title"><div class="welcome-glow" aria-hidden="true"></div><p class="welcome-brand">${brand}</p><div class="welcome-fan" aria-hidden="true">${[0, 1, 2].map(() => '<figure class="welcome-card"></figure>').join('')}</div><div class="welcome-copy"><p class="kicker">An invite from ${OWNER}</p><h1 id="welcome-title" dir="auto">Hi ${escape(guest.name)}</h1><p class="welcome-line">${OWNER} shared his cinema with you.</p><p class="welcome-sub">His films, on this screen, whenever you like.</p></div><div class="welcome-actions"><button class="primary" data-action="enter">${icon('play')}Start watching</button><p class="welcome-tip">Add it to your home screen to come back in one tap.</p></div></section>`);
+  mount('welcome', `<section class="welcome" aria-labelledby="welcome-title"><div class="welcome-glow" aria-hidden="true"></div><p class="welcome-brand">${brand}</p><div class="welcome-fan" aria-hidden="true">${[0, 1, 2].map(() => '<figure class="welcome-card"></figure>').join('')}</div><div class="welcome-copy"><p class="kicker">An invite from ${OWNER}</p><h1 id="welcome-title" dir="auto">Hi ${escape(guest.name)}</h1><p class="welcome-line">${OWNER} shared his cinema with you.</p><p class="welcome-sub">His films, on this screen, whenever you like.</p></div><div class="welcome-actions"><button class="primary" data-action="enter">${icon('play')}Start watching</button><p class="welcome-tip">${ios() || homeScreenApp() ? 'Keep this link: tap it any time to watch.' : 'Add it to your home screen to come back in one tap.'}</p></div></section>`);
   const stamp = revision;
   welcomeLoad = getCatalog({ demo, token, signal: operation.signal });
   welcomeLoad.then(result => {
@@ -864,10 +903,13 @@ async function deliverFile() {
 }
 main.addEventListener('submit',async event=>{
   if(event.target.id==='invite-form') { event.preventDefault(); await makeInvite(); return; }
+  if(event.target.id==='paste-form') { event.preventDefault(); await openPasted(main.querySelector('#invite-paste').value); return; }
   if(event.target.id!=='connect-form') return; event.preventDefault();
   const input=main.querySelector('#token'); const value=input.value.trim();
   if(!value) return;
   if(demo) { await loadLibrary(); return; }
+  const pasted=inviteFromText(value, location.href); // an invite link pasted here opens the invite; it is no token
+  if(pasted?.token) { await openInvite(pasted); return; }
   try { localStorage.setItem('mkc.token',value); token=value; guest=null; writeGuest(storage,null); } catch { connect('Browser storage is blocked. Enable storage for this site.'); return; }
   await loadLibrary();
 });
@@ -912,6 +954,8 @@ async function onClick(event) {
     case 'remove-invite': { removeInvite(storage, button.dataset.id); const row = button.closest('.invite-item'); main.querySelector('[data-action="open-invite"]')?.focus(); row?.remove(); announce('Removed from the list. The link still works until you stop it on GitHub.'); break; }
     case 'enter': await enter(); break;
     case 'leave': await leave(); break;
+    case 'paste-invite': await pasteInvite(); break;
+    case 'paste-screen': pasteScreen(); break;
     case 'keep-key': pendingInvite = null; await loadLibrary(); break;
     case 'switch-invite': if (pendingInvite) await acceptInvite(pendingInvite); break;
     case 'play': await play(); break;
@@ -923,6 +967,7 @@ async function onClick(event) {
 [main, topbar, tabbar].forEach(el => el.addEventListener('click', onClick));
 main.addEventListener('input', event => {
   if (event.target.id === 'invite-name') { syncInviteName(); return; }
+  if (event.target.id === 'invite-paste') { pasteTyped(event.target); return; }
   if(event.target.id !== 'film-search') return;
   const caret = event.target.selectionStart;
   query = event.target.value; library();
@@ -976,14 +1021,15 @@ async function forgetToken() {
 onReducedChange(syncAutoplay);
 window.addEventListener('pagehide', persistPlayback);
 document.addEventListener('visibilitychange', () => { if(document.hidden) persistPlayback(); });
-window.addEventListener('offline',()=>{ if(screen!=='connect') stateScreen('offline'); });
+// With no key nothing loads, so going offline changes nothing: Retry would try the missing key and show the token screen.
+window.addEventListener('offline',()=>{ if(screen!=='connect' && (token || demo)) stateScreen('offline'); });
 async function start() {
   const preview=demo && params.get('state');
   if(preview==='connect' || preview==='connect-error') { connect(preview==='connect-error'?'Token is wrong or expired':''); return; }
   if(preview==='loading') { loading(); return; }
   if(preview && messages[preview]) { stateScreen(preview); return; }
   if(!demo && arrival) { await openInvite(arrival); return; }
-  if(!demo && !token) { if (guest?.left) guestScreen('invite-left'); else connect(); return; }
+  if(!demo && !token) { if (guest?.left) guestScreen('invite-left'); else if (homeScreenApp()) pasteScreen(); else connect(); return; }
   await loadLibrary();
   if(demo && catalog && ['save-progress','saved'].includes(preview)) { film=catalog.films[0]; version=film.versions[0]; saveScreen(preview,true); }
 }

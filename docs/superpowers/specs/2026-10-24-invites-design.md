@@ -40,6 +40,18 @@ Source: GitHub Docs, "Managing your personal access tokens" → "Pre-filling fin
 | Broken link | "This invite link is incomplete. Ask Mohamed to send it again." |
 | Key revoked/expired (401/403/404 at any time) | "This invite has ended. Ask Mohamed for a new link." · Try again · Forget this invite |
 | After Leave | "You left Mohamed's cinema. Open his link again to come back." |
+| Home-screen app with no key (added 2026-10-25) | "Paste your invite link": Paste invite link (clipboard) or the box, then the welcome · I'm Mohamed → connect form |
+| After Leave, in a home-screen app | "To come back, paste his invite link." · Paste his invite link |
+
+## iPhone home screen (2026-10-25)
+
+An iPhone's home-screen app has its own storage, apart from Safari's (WebKit bug 181849, closed as by design), and opens the manifest `start_url`, which has no fragment. A guest who opened the link in Safari and then added the app to the Home Screen therefore has no key there and used to meet the owner's connect form.
+
+- The welcome tip on an iPhone (and inside any home-screen app) is "Keep this link: tap it any time to watch." Android and computers share storage with their installed app and keep "Add it to your home screen to come back in one tap."
+- A home-screen app (`navigator.standalone`, or `display-mode: standalone`) with no key and no guest record shows "Paste your invite link". The button reads `navigator.clipboard.readText()` inside the tap; a refusal or an empty clipboard hands over to the box, and a whole link pasted into the box opens at once. The text may be the link or the shared message around it; a broken link, another app's link (a different app address) and text with no invite are refused in place and store nothing. A good link runs the same path as a tapped one (`openInvite`).
+- No GitHub words on that screen. The owner's own phone has one quiet button, **I'm Mohamed**, to his connect form; there, in a home-screen app with no key, **I have an invite link** leads back. An invite link pasted into the token box opens the invite instead of being saved as a token.
+- Guest screens with no key (left, broken link, paste) have no Settings gear: its Connection rows talk about tokens and lead to the connect form.
+- With no key nothing loads, so going offline leaves the screen as it is: Retry there would try the missing key and show the token screen.
 
 ## Not in scope (my call)
 

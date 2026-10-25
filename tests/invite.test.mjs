@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeInvite, decodeInvite, inviteLink, takeInvite, tokenPageURL, cleanName, isFineGrained, readInvites, addInvite, removeInvite, readGuest, writeGuest, INVITES_KEY, NAME_MAX } from '../invite.js';
+import { encodeInvite, decodeInvite, inviteLink, takeInvite, inviteFromText, tokenPageURL, cleanName, isFineGrained, readInvites, addInvite, removeInvite, readGuest, writeGuest, INVITES_KEY, NAME_MAX } from '../invite.js';
 
 // Made-up keys in the fine-grained shape. No real token is used anywhere in the tests.
 const FAKE = 'github_pat_11FAKEFAKE0000000000_testonlynotarealkeyAbCdEfGh1234';
@@ -51,6 +51,24 @@ test('invite: taking it from the address removes the fragment at once', () => {
   assert.deepEqual(calls.at(-1), [{ keep: 1 }, '', '/?demo'], 'a broken invite is removed as well');
   assert.equal(takeInvite({ hash: '#main', pathname: '/', search: '' }, hist), null, 'other fragments are left alone');
   assert.equal(calls.length, 2);
+});
+
+test('invite: a pasted link, or a message around it, opens the invite; a broken or foreign link is told apart', () => {
+  const app = 'https://mohamed3042.github.io/mk-cinema/';
+  const link = inviteLink(app, { name: 'Mom', token: FAKE }), mom = { name: 'Mom', token: FAKE };
+  assert.deepEqual(inviteFromText(link, app), mom, 'the whole link');
+  assert.deepEqual(inviteFromText(`Mohamed shared his cinema with you. ${link}`, app), mom, 'the shared message');
+  assert.deepEqual(inviteFromText(`Here it is:\n${link}.`, `${app}index.html`), mom, 'a full stop after it; the app opened as index.html');
+  assert.deepEqual(inviteFromText(`  ${link.replace('/mk-cinema/', '/mk-cinema/index.html')}  `, app), mom, 'the link to index.html');
+  assert.deepEqual(inviteFromText(link.slice(link.indexOf('#')), app), mom, 'the fragment alone');
+  for (const text of ['see you at 8', '', '   ', null, undefined, app]) assert.equal(inviteFromText(text, app), null, `no invite: ${text}`);
+  assert.deepEqual(inviteFromText(link.slice(0, -12), app), { bad: true }, 'a link cut short');
+  assert.deepEqual(inviteFromText(`${app}#invite=`, app), { bad: true });
+  assert.deepEqual(inviteFromText(link.replace('/mk-cinema/', '/mk-news/'), app), { other: true }, "another app's invite");
+  assert.deepEqual(inviteFromText(link.replace('https://mohamed3042.github.io', 'https://example.test'), app), { other: true });
+  assert.deepEqual(inviteFromText(link.replace('https://mohamed3042.github.io', 'HTTPS://MOHAMED3042.GITHUB.IO'), app), mom, 'capitals in the scheme and host');
+  assert.deepEqual(inviteFromText(link.replace('https://mohamed3042.github.io', 'HTTPS://example.test'), app), { other: true }, 'capitals never skip the check');
+  assert.deepEqual(inviteFromText(link.replace('https://mohamed3042.github.io', 'https://example.test:99999'), app), { other: true }, 'an address that does not parse is refused');
 });
 
 test('invite: GitHub token page is pre-filled for the person', () => {

@@ -3,7 +3,11 @@
 // (no overflow:hidden on html/body): an iPhone home-screen app shrinks its window by the status bar while the
 // page is locked, which left a black band under them (owner's iPhone, 2026-10-24).
 
-const standalone = () => 'standalone' in navigator && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
+// iPhone and iPad: only WebKit there has navigator.standalone. Their home-screen apps keep a storage of their own.
+export const ios = () => 'standalone' in navigator;
+// A web app opened from the home screen, on any phone or computer.
+export const homeScreenApp = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const standalone = () => ios() && homeScreenApp();
 
 // The size full-screen layers take: the window.
 export function viewSize() {

@@ -54,6 +54,14 @@ export function takeInvite(loc = globalThis.location, hist = globalThis.history)
   try { hist.replaceState(hist.state, '', `${loc.pathname}${loc.search}`); } catch { /* the address keeps it; nothing is sent */ }
   return decodeInvite(hash.slice('#invite='.length)) || { bad: true };
 }
+// An invite pasted as text: the link, or the shared message around it. Returns null (no invite), { bad: true },
+// { other: true } (a link to another app) or { name, token }. appURL is this app's own address.
+export function inviteFromText(text, appURL) {
+  const found = /(https?:\/\/\S*?)?#invite=([A-Za-z0-9_-]*)/iu.exec(String(text ?? ''));
+  if (!found) return null;
+  if (found[1]) { try { if (new URL('./', found[1]).href !== new URL('./', appURL).href) return { other: true }; } catch { return { other: true }; } }
+  return decodeInvite(found[2]) || { bad: true };
+}
 
 // GitHub's new fine-grained token page, pre-filled (name, description, resource owner, 90 days, Contents: Read-only).
 // Repository selection has no URL parameter: the owner picks mk-cinema-library by hand.

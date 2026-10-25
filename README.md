@@ -46,6 +46,8 @@ The invite list (`mkc.invites`, this device only) keeps the name, the key's last
 
 Opening a link removes the fragment from the address at once (`history.replaceState`), stores the key under `mkc.token` and the name under `mkc.guest`, and shows a welcome ("Mohamed shared his cinema with you") while the library loads behind it. A guest never sees the connect form or GitHub words: Settings shows **Shared by Mohamed** and **Leave**, and a key GitHub no longer accepts shows "This invite has ended. Ask Mohamed for a new link." A device that already holds the owner's key asks before switching.
 
+On an iPhone a home-screen app keeps its own storage, apart from Safari's ([WebKit bug 181849](https://bugs.webkit.org/show_bug.cgi?id=181849)), and opens the start address, so the key saved from the link is not there. So on an iPhone the welcome says "Keep this link: tap it any time to watch." (Android and computers share storage with their home-screen app and keep the Home Screen tip), and a home-screen app with no key asks **Paste your invite link** (the clipboard on tap, or a box) instead of the connect form; the pasted link takes the same path as a tapped one. **I'm Mohamed** there leads to the connect form, and **I have an invite link** leads back; an invite link pasted into the token box opens the invite.
+
 ## Watch and save
 
 Choose a card or **More info** to open its detail sheet. Pick a cut, then Phone or Desktop when both exist. The sheet also shows the date added, a release link when supplied, and films with the same product. Play opens the player (below). Arabic titles use `dir="auto"` and a local Arabic font.
