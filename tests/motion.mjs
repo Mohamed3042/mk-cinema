@@ -810,6 +810,37 @@ try {
     }
   });
 
+  await record('Reduce transparency: the floating controls stay solid under the pointer too', async () => {
+    const { context, page } = await session();
+    await (await context.newCDPSession(page)).send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
+    await loaded(page);
+    assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches), true, 'Chrome takes the setting');
+    // Hovers, waits out the background transition, then reads the colour: rgb() is solid, rgba() lets the film through.
+    const hovered = async locator => {
+      await locator.hover();
+      await locator.evaluate(el => new Promise(resolve => (function check() {
+        if (el.matches(':hover') && !el.getAnimations().some(a => a.transitionProperty === 'background-color')) resolve();
+        else requestAnimationFrame(check);
+      })()));
+      return locator.evaluate(el => getComputedStyle(el).backgroundColor);
+    };
+    await page.locator('.billboard-tool').waitFor({ timeout: 12000 });
+    assert.match(await hovered(page.locator('.billboard-tool')), /^rgb\(/, 'the billboard mute button');
+    assert.match(await hovered(page.locator('.billboard .primary').first()), /^rgb\(/, 'the billboard Play button');
+    assert.match(await hovered(page.locator('.billboard [data-action=hero-info]')), /^rgb\(/, 'the billboard More info button');
+    const shelf = page.locator('.shelf').first();
+    await shelf.hover();
+    assert.match(await hovered(shelf.locator('.paddle-next')), /^rgb\(/, 'a row paddle');
+    await page.locator('.billboard [data-action=hero-info]').click();
+    await page.locator('#film-detail[open]').waitFor();
+    for (const button of await page.locator('#film-detail .round').all()) assert.match(await hovered(button), /^rgb\(/, `More info: ${await button.getAttribute('aria-label')}`);
+    await page.keyboard.press('Escape');
+    await page.locator('.tabs [data-tab=reels]').click();
+    await page.locator('section.reel .reel-item').first().waitFor();
+    assert.match(await hovered(page.locator('.reel .round').first()), /^rgb\(/, 'a Reels button');
+    await context.close();
+  });
+
   for (const big of [false, true]) await record(`previews on a phone: a refused stream ${big ? 'stays on the poster when the film is over 40 MB' : 'falls back to a whole-film download'}`, async () => {
     const { context, page } = await session({ viewport: PHONE, phone: true });
     const videoData = await readFile(new URL(catalog.films[0].versions[0].file, root));
@@ -1066,10 +1097,10 @@ try {
   });
 
   await record('Reels on an iPhone: a film with a 16:9 poster plays its phone cut from the start, through a broken link, a whole-film download and the next round', async () => {
-    // Shaped like the library's MK Sheep: a 16:9 poster, the phone cut listed first. It is the newest, so it opens the reel.
-    const sheep = { id: 'sheep-test', title: 'Sheep test', kind: 'film', lang: 'en', dir: 'ltr', posterShape: '16:9', seconds: 12, added: '2026-10-23', poster: 'demo/posters/amber-room.jpg', product: 'MK Suite & apps', group: null,
+    // Shaped like a real library film: a 16:9 poster, the phone cut listed first. It is the newest, so it opens the reel.
+    const wide = { id: 'wide-poster-test', title: 'Wide poster test', kind: 'film', lang: 'en', dir: 'ltr', posterShape: '16:9', seconds: 12, added: '2026-10-23', poster: 'demo/posters/amber-room.jpg', product: 'MK Suite & apps', group: null,
       versions: catalog.films.find(f => f.id === 'amber-room').versions.map(v => ({ ...v })) };
-    const mock = { ...catalog, films: [sheep, ...catalog.films] };
+    const mock = { ...catalog, films: [wide, ...catalog.films] };
     for (const iphone of [true, false]) {
       const { context, page } = await session({ viewport: PHONE, phone: true });
       const fetched = [];
@@ -1098,18 +1129,18 @@ try {
       await reelLive(page);
       const shown = () => page.locator('.reel-item.is-active').evaluate(item => { const video = item.querySelector('.reel-video'); return { film: item.dataset.film, shape: item.dataset.shape, w: video?.videoWidth, h: video?.videoHeight, fit: video && getComputedStyle(video).objectFit }; });
       const how = iphone ? 'downloaded whole' : 'streamed';
-      assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'contain' }, `${how}: the phone cut plays, shown whole`);
+      assert.deepEqual(await shown(), { film: 'wide-poster-test', shape: 'phone', w: 360, h: 640, fit: 'contain' }, `${how}: the phone cut plays, shown whole`);
       assert.ok(fetched.length && fetched.every(path => path.endsWith('-phone.mp4')), `${how}: only phone cuts were fetched (${fetched.join(', ')})`);
       if (!iphone) {
         // The short-lived link breaks mid-film: one fresh link, and the same cut carries on where it was.
         await page.locator('.reel-video').evaluate(video => { video.pause(); video.currentTime = 2; video.dispatchEvent(new Event('error')); });
         await page.waitForFunction(() => { const v = document.querySelector('.reel-item.is-active .reel-video'); return v && !v.paused && v.currentTime >= 2 && v.videoWidth; });
-        assert.deepEqual(await shown(), { film: 'sheep-test', shape: 'phone', w: 360, h: 640, fit: 'contain' }, 'after a broken link the phone cut carries on');
+        assert.deepEqual(await shown(), { film: 'wide-poster-test', shape: 'phone', w: 360, h: 640, fit: 'contain' }, 'after a broken link the phone cut carries on');
       }
       // The next round: every item of the new round keeps the phone cut.
       await page.locator('.reel-track').evaluate(track => { const items = track.querySelectorAll('.reel-item'); track.scrollTop = items[items.length - 3].offsetTop; });
       await page.waitForFunction(count => document.querySelectorAll('.reel-item').length > count, titleCount + 1);
-      const shapes = await page.locator('.reel-item[data-film=sheep-test]').evaluateAll(items => items.map(item => item.dataset.shape));
+      const shapes = await page.locator('.reel-item[data-film=wide-poster-test]').evaluateAll(items => items.map(item => item.dataset.shape));
       assert.deepEqual(shapes, ['phone', 'phone'], 'the next round plays the phone cut too');
       assert.ok(fetched.every(path => path.endsWith('-phone.mp4')), `${how}: still only phone cuts (${fetched.join(', ')})`);
       await context.close();
@@ -1317,11 +1348,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v20'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'invite.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v20'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v20'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v21'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'invite.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v21'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v21'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
-    assert.equal(await page.locator('#shell-version').innerText(), 'v20 · saved for offline', 'Settings → About names the shell this browser holds');
+    assert.equal(await page.locator('#shell-version').innerText(), 'v21 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 

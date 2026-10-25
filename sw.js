@@ -1,5 +1,5 @@
 // Shell files are served cache-first: bump this on every shell change, or installed phones keep the old app.
-const CACHE = 'mkc-shell-v20';
+const CACHE = 'mkc-shell-v21';
 const SHELL = [
   './', './index.html', './styles.css', './motion.css', './app.js', './api.js', './catalog.js', './motion.js', './previews.js', './billboard.js', './rows.js', './bob.js', './modal.js', './feed.js', './ambient.js', './reel.js', './settings.js', './invite.js', './player.js', './viewport.js', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png', './favicon.png',

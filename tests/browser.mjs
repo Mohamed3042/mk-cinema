@@ -112,6 +112,8 @@ try {
       await page.locator('[data-filter=All]').click();
       await page.locator('.results-grid').waitFor();
       assert.equal(await page.locator('.results-grid .film-card').count(), allCount, 'All chip lists each grouped title once');
+      // The grid's clearance under the bar is the library's own padding, so its clip starts at the top of the page.
+      assert.equal(await page.locator('main.library').evaluate(el => Math.round(el.getBoundingClientRect().top + scrollY)), 0, 'the film light reaches under the bar, not cut at its edge');
       for (const [chip, product] of [['MK Voice', 'MK Voice'], ['Business OS', 'MK Business OS'], ['Talent Atlas', 'Talent Atlas'], ['Job Orbit', 'MK Job Orbit'], ['Suite & apps', 'MK Suite & apps'], ['More', 'More films'], ['Ads'], ['Demos']]) {
         await page.locator('[data-filter]').filter({ hasText: new RegExp(`^${chip.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).click();
         await page.locator('.results-grid').waitFor();

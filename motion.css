@@ -28,9 +28,10 @@
 .tabbar button[aria-current=page] svg{transform:scale(1.08)}
 @media(min-width:900px){.topbar{padding-inline:4%}.topbar .wordmark{font-size:34px}}
 
-/* Page frame: the top bar floats over the hero; content clears it when there is no hero */
+/* Page frame: the top bar floats over the hero; content clears it when there is no hero. Padding, not the first
+   child's margin: that margin would collapse through the clipped library and cut the film light flat under the bar. */
 .library{position:relative}
-.library:not(.has-billboard)>:first-child{margin-top:calc(var(--bar-h) + env(safe-area-inset-top))}
+.library:not(.has-billboard){padding-top:calc(var(--bar-h) + env(safe-area-inset-top))}
 body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 44px)}
 @media(min-width:900px){body.has-chrome .library{padding-bottom:max(32px,env(safe-area-inset-bottom))}}
 .has-billboard .filters{position:absolute;inset:calc(var(--bar-h) + env(safe-area-inset-top)) 0 auto;z-index:6;padding-top:8px;background:transparent}
@@ -281,8 +282,8 @@ section.reel-empty{display:grid;place-items:center;background:radial-gradient(el
 .empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:14px}
 .reel-empty .primary,.reel-empty .secondary{margin:0;width:auto;min-height:48px;padding:0 22px;font-size:15px}
 .reel-empty .primary svg,.reel-empty .secondary svg{width:20px;height:20px}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{background:rgba(24,26,33,.92)}}
-@media(prefers-reduced-transparency:reduce){.reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{background:#1c1f26;-webkit-backdrop-filter:none;backdrop-filter:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{background:rgba(24,26,33,.92)}.reel .round:hover{background:var(--glass-hover)}}
+@media(prefers-reduced-transparency:reduce){.reel .round,.reel-count,.reel-pause,.reel-note,.reel-hint{background:#1c1f26;-webkit-backdrop-filter:none;backdrop-filter:none}.reel .round:hover{background:var(--glass-hover)}}
 
 /* Settings: a page of short rows in frosted groups, Apple Settings calm. Labels read left, controls sit right. */
 .settings-page{max-width:680px;margin:0 auto;padding:calc(var(--bar-h) + env(safe-area-inset-top) + 8px) max(16px,env(safe-area-inset-right)) calc(var(--tab-h) + env(safe-area-inset-bottom) + 48px) max(16px,env(safe-area-inset-left))}
@@ -447,12 +448,15 @@ a.primary,a.set-pill{text-decoration:none}
 @media(prefers-reduced-transparency:reduce){.invite-ticket{background:#14161d;-webkit-backdrop-filter:none;backdrop-filter:none}}
 
 /* Without frosted glass (older browsers, or "Reduce transparency"), the floating controls sit on solid ink, like the
-   page's own glass in styles.css. These live here because styles.css loads first and would lose to the rules above. */
+   page's own glass in styles.css. These live here because styles.css loads first and would lose to the rules above.
+   Hover keeps them solid too: the :hover rules above outrank a plain class. */
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .tabs,.tabbar,.hot-rail{background:rgba(24,26,33,.94)}
   .billboard-tool,.round,.detail-close,.paddle{background:rgba(40,43,52,.92)}
+  .billboard-tool:hover,.round:hover,.paddle:hover{background:var(--glass-hover)}
 }
 @media(prefers-reduced-transparency:reduce){
   .tabs,.tabbar,.hot-rail{background:#1c1f26}
   .billboard-tool,.round,.detail-close,.paddle{background:#262931}
+  .billboard-tool:hover,.round:hover,.paddle:hover{background:var(--glass-hover)}
 }

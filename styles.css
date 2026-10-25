@@ -130,9 +130,9 @@ body:has(dialog[open]){overflow:hidden}
   .hot-shade::after{background:linear-gradient(90deg,rgba(5,6,10,.92) 0%,rgba(5,6,10,.78) 32%,rgba(5,6,10,0) 66%),linear-gradient(0deg,rgba(5,6,10,.85),rgba(5,6,10,0) 55%)}
   .detail-shade::after{background:linear-gradient(transparent 20%,rgba(20,22,29,.85) 60%,rgb(20,22,29)),linear-gradient(90deg,rgba(20,22,29,.8),transparent 65%)}
 }
-/* Without frosted glass (older browsers, or "Reduce transparency"), the same controls sit on solid ink. */
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--glass:rgba(40,43,52,.92);--glass-hover:rgba(58,62,74,.95);--smoke:rgba(24,26,33,.9)}.library .secondary{background:rgba(52,56,66,.94)}.cut-count,.center-play{background:rgba(40,43,52,.92)}}
-@media(prefers-reduced-transparency:reduce){:root{--glass:#262931;--glass-hover:#343843;--smoke:#1c1f26;--frost:none;--panel:#14161d}.library .secondary{background:#30333c}.library::before{opacity:.5}.cut-count,.center-play{background:#262931}}
+/* Without frosted glass (older browsers, or "Reduce transparency"), the same controls sit on solid ink, hovered too. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--glass:rgba(40,43,52,.92);--glass-hover:rgba(58,62,74,.95);--smoke:rgba(24,26,33,.9)}.library .secondary{background:rgba(52,56,66,.94)}.library .secondary:hover{background:rgba(70,74,84,.95)}.cut-count,.center-play{background:rgba(40,43,52,.92)}}
+@media(prefers-reduced-transparency:reduce){:root{--glass:#262931;--glass-hover:#343843;--smoke:#1c1f26;--frost:none;--panel:#14161d}.library .secondary{background:#30333c}.library .secondary:hover{background:#42454e}.library .primary:hover{background:#e0e0e0}.library::before{opacity:.5}.cut-count,.center-play{background:#262931}}
 /* The screens around the library (connect, loading, offline, empty, save) wear the same glass: DM Sans headings,
    white pills, hairline rules, a glass ring for the state icon. The old stage lights and curtain are gone. */
 h1,h2,.film-title{font-family:DM,Arabic,sans-serif;font-weight:600}

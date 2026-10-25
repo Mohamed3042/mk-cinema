@@ -52,7 +52,7 @@ test('an episode is labelled Episode and listed with Films; an unknown kind show
   assert.equal(groups.find(g => g.id === 'ep').kind, 'episode');
   assert.equal(groups.find(g => g.id === 'odd').kind, 'film');
   assert.deepEqual(filterFilms(groups, 'Films').map(g => g.id).sort(), ['ep', 'odd']);
-  assert.equal(splitTitle('Pop & Ship — Ep 1 (episode)').notes.length, 0, 'the kind is not repeated as a note');
+  assert.equal(splitTitle('Night Market — Ep 1 (episode)').notes.length, 0, 'the kind is not repeated as a note');
 });
 
 test('progress stores numbers per id and strips all other fields on read', () => {
