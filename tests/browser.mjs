@@ -366,6 +366,42 @@ try {
     await context.close();
   });
 
+  // 2026-10-25: eight films with kind "episode" refused the whole catalog, so every device showed "This file could not
+  // open". Now a label the app does not know is dropped, and a film it cannot read is left out (Settings counts it).
+  await record('a new kind, an unknown kind and one unreadable film never close the cinema', async () => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
+    await context.addInitScript(() => { if (!localStorage.getItem('mkc.token')) localStorage.setItem('mkc.token', 'synthetic-test-token'); });
+    const [one, two, three] = catalog.films.filter(f => !f.group);
+    const library = { ...catalog, films: [...catalog.films,
+      { ...one, id: 'made-up-episode', title: 'Made-up Show — Ep 1 · Pilot', kind: 'episode', added: '2026-01-01' },
+      { ...two, id: 'made-up-unknown-kind', title: 'Made-up Hologram', kind: 'hologram', added: '2026-01-01' },
+      { ...three, id: 'made-up-unreadable', title: 'Made-up Broken', poster: '../private.png' },
+    ] };
+    await context.route('https://api.github.com/**', async route => {
+      const path = decodeURIComponent(new URL(route.request().url()).pathname.split('/contents/')[1]);
+      const headers = { 'access-control-allow-origin': '*' };
+      if (path === 'cinema.json') return route.fulfill({ json: library, headers });
+      return route.fulfill({ body: await readFile(new URL(path, root)), contentType: 'image/jpeg', headers });
+    });
+    const page = await context.newPage();
+    captureErrors(page, 'catalog labels');
+    await page.goto(`${origin}/`);
+    await page.locator('main.library').waitFor();
+    await page.locator('[data-action=search]').click();
+    await page.locator('#film-search').fill('Made-up');
+    await page.waitForFunction(() => document.querySelectorAll('.results-grid .film-card').length === 2);
+    assert.equal(await page.locator('.results-grid .film-card[data-film="made-up-unreadable"]').count(), 0, 'the unreadable film is left out');
+    await page.locator('.results-grid .film-card[data-film="made-up-episode"]').click();
+    await page.locator('#film-detail[open]').waitFor();
+    assert.match(await page.locator('#film-detail').innerText(), /Episode/, 'an episode says so');
+    await page.keyboard.press('Escape');
+    await page.locator('#film-detail').waitFor({ state: 'hidden' });
+    await page.locator('#tabbar [data-tab=settings]').click();
+    await page.locator('main.settings').waitFor();
+    assert.match(await page.locator('#set-about').locator('..').innerText(), /Left out[\s\S]*1 title in cinema\.json could not be read/);
+    await context.close();
+  });
+
   await record('a completed share does not reopen a film after leaving', async () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     await context.addInitScript(() => {

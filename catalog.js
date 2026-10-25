@@ -1,6 +1,6 @@
 export const PRODUCTS = ['MK Voice', 'MK Business OS', 'Talent Atlas', 'MK Job Orbit', 'MK Suite & apps', 'More films'];
-const KINDS = ['film', 'ad', 'loop', 'teaser', 'demo', 'reel'];
-const KIND_LABELS = { film: 'Film', reel: 'Reel', ad: 'Ad', loop: 'Loop', teaser: 'Teaser', demo: 'Demo' };
+const KINDS = ['film', 'episode', 'ad', 'loop', 'teaser', 'demo', 'reel'];
+const KIND_LABELS = { film: 'Film', episode: 'Episode', reel: 'Reel', ad: 'Ad', loop: 'Loop', teaser: 'Teaser', demo: 'Demo' };
 const RESTATED = new Set([...KINDS, 'عربي', 'arabic']);
 
 export const kindLabel = kind => KIND_LABELS[kind] || 'Film';
@@ -59,7 +59,7 @@ export function groupFilms(films, { lang = null } = {}) {
 function matchesFilter(film, filter) {
   const products = { 'MK Voice': 'MK Voice', 'Business OS': 'MK Business OS', 'Talent Atlas': 'Talent Atlas', 'Job Orbit': 'MK Job Orbit', 'Suite & apps': 'MK Suite & apps', More: 'More films' };
   if (filter === 'All') return true;
-  if (filter === 'Films') return ['film', 'teaser', 'reel'].includes(film.kind);
+  if (filter === 'Films') return ['film', 'episode', 'teaser', 'reel'].includes(film.kind);
   if (filter === 'Ads') return film.kind === 'ad' || film.kind === 'loop';
   if (filter === 'Demos') return film.kind === 'demo';
   if (filter === 'Arabic') return film.lang === 'ar';

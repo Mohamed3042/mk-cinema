@@ -27,18 +27,33 @@ test('catalog validates data and sends private API headers without storing reque
   assert.equal((await api.getCatalog({ token: 'test-secret' })).films[0].id, 'demo-one');
 });
 
-test('catalog rejects path traversal, URL paths, bad dimensions and duplicate IDs', async () => {
+test('a film with path traversal, a URL path or bad dimensions is left out; no readable film refuses the catalog', async () => {
   for (const change of [
     data => { data.films[0].poster = '../private.png'; },
     data => { data.films[0].poster = 'https://evil.example/x'; },
     data => { data.films[0].versions[0].file = '%2e%2e/private.mp4'; },
     data => { data.films[0].versions[0].w = -1; },
-    data => { data.films.push(data.films[0]); },
   ]) {
     const data = good(); change(data);
     globalThis.fetch = async () => Response.json(data);
-    await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' });
+    await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' }, 'its only film is unreadable');
+    data.films.push({ ...good().films[0], id: 'demo-two' });
+    globalThis.fetch = async () => Response.json(data);
+    const library = await api.getCatalog({ token: 'secret' });
+    assert.deepEqual(library.films.map(f => f.id), ['demo-two'], 'one bad film never closes the cinema');
+    assert.equal(library.skipped, 1);
   }
+  const twice = good(); twice.films.push({ ...twice.films[0], title: 'A copy' });
+  globalThis.fetch = async () => Response.json(twice);
+  const library = await api.getCatalog({ token: 'secret' });
+  assert.deepEqual(library.films.map(f => f.title), ['A made-up film'], 'a repeated id is left out');
+  assert.equal(library.skipped, 1);
+  for (const broken of [null, [], { version: 2, updated: 'x', films: [] }, { version: 1, updated: 'x' }, { version: 1, updated: '', films: [] }]) {
+    globalThis.fetch = async () => Response.json(broken);
+    await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' }, JSON.stringify(broken));
+  }
+  globalThis.fetch = async () => Response.json({ version: 1, updated: 'x', films: [] });
+  assert.equal((await api.getCatalog({ token: 'secret' })).films.length, 0, 'an empty catalog is still a catalog');
 });
 
 test('catalog preserves optional film metadata and keeps old catalogs valid', async () => {
@@ -52,17 +67,33 @@ test('catalog preserves optional film metadata and keeps old catalogs valid', as
   const old = (await api.getCatalog({ token: 'secret' })).films[0];
   for (const key of Object.keys(metadata)) assert.equal(Object.hasOwn(old, key), false, key);
 
+  // An optional label the app cannot read is dropped, so the screens use their default; the film still opens.
+  // (2026-10-25: a new kind, "episode", once refused the whole catalog and closed the cinema for everyone.)
   for (const [key, value] of [
     ['product', 'Other product'], ['product', 5], ['kind', 'movie'], ['kind', []], ['lang', 'fr'], ['lang', {}],
     ['group', 5], ['group', ' '], ['group', 'a'.repeat(201)], ['variant', false], ['variant', ''],
-    ['blurb', {}], ['blurb', 'a'.repeat(1001)], ['poster', '../private.png'],
+    ['blurb', {}], ['blurb', 'a'.repeat(1001)],
   ]) {
-    const invalid = good();
-    Object.assign(invalid.films[0], metadata, { [key]: value });
-    globalThis.fetch = async () => Response.json(invalid);
-    await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' }, key);
+    const data = good();
+    Object.assign(data.films[0], metadata, { [key]: value });
+    globalThis.fetch = async () => Response.json(data);
+    const film = (await api.getCatalog({ token: 'secret' })).films[0];
+    assert.equal(Object.hasOwn(film, key), false, `${key} is dropped`);
+    assert.equal(film.id, 'demo-one');
   }
+  for (const [key, value, expected] of [['release', 5, null], ['release', {}, null], ['added', 5, ''], ['added', ' ', '']]) {
+    const data = good(); data.films[0][key] = value;
+    globalThis.fetch = async () => Response.json(data);
+    assert.equal((await api.getCatalog({ token: 'secret' })).films[0][key], expected, key);
+  }
+  const episode = good(); episode.films[0].kind = 'episode';
+  globalThis.fetch = async () => Response.json(episode);
+  assert.equal((await api.getCatalog({ token: 'secret' })).films[0].kind, 'episode', 'one part of a series');
   const invalid = good();
+  Object.assign(invalid.films[0], metadata, { poster: '../private.png' });
+  globalThis.fetch = async () => Response.json(invalid);
+  await assert.rejects(api.getCatalog({ token: 'secret' }), { code: 'invalid' }, 'a bad required path still refuses its film');
+  Object.assign(invalid.films[0], { poster: 'posters/one.png' });
   Object.assign(invalid.films[0], metadata);
   invalid.films[0].versions[0].file = 'https://example.test/private.mp4';
   globalThis.fetch = async () => Response.json(invalid);

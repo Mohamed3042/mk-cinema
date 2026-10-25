@@ -75,44 +75,51 @@ function text(value, max = 1000) {
   return value;
 }
 
+// A film the app cannot read is left out (and counted), so one bad entry never closes the whole cinema; a catalog
+// that lists films must still have one readable film.
 function catalog(data) {
   if (!data || data.version !== 1 || !Array.isArray(data.films)) invalid();
-  const ids = new Set();
+  const updated = text(data.updated, 200), ids = new Set();
+  const films = data.films.flatMap(entry => {
+    let film;
+    try { film = readFilm(entry); } catch (error) { if (error instanceof CinemaError) return []; throw error; }
+    if (ids.has(film.id)) return [];
+    ids.add(film.id);
+    return [film];
+  });
+  if (data.films.length && !films.length) invalid();
+  return { version: 1, updated, films, skipped: data.films.length - films.length };
+}
+// The fields that reach paths and sizes must be right. An optional label the app cannot read (a kind it does not know
+// yet, an empty blurb) is dropped, and the screens use their default.
+const LABELS = {
+  product: ['MK Voice', 'MK Business OS', 'Talent Atlas', 'MK Job Orbit', 'MK Suite & apps', 'More films'],
+  kind: ['film', 'episode', 'ad', 'loop', 'teaser', 'demo', 'reel'], lang: ['ar', 'en'],
+};
+const label = (value, max) => typeof value === 'string' && value.trim() && value.length <= max ? value : undefined;
+function readFilm(film) {
+  if (!film || typeof film !== 'object') invalid();
+  const id = text(film.id, 200);
+  if (!['ltr', 'rtl', 'auto'].includes(film.dir) || !['16:9', '9:16'].includes(film.posterShape)) invalid();
+  if (!Number.isFinite(film.seconds) || film.seconds < 0 || !Array.isArray(film.versions) || !film.versions.length) invalid();
+  const kinds = new Set();
+  const versions = film.versions.map(version => {
+    if (!version || !['phone', 'desktop'].includes(version.kind) || kinds.has(version.kind)) invalid();
+    kinds.add(version.kind);
+    if (![version.w, version.h, version.bytes].every(value => Number.isSafeInteger(value) && value > 0)) invalid();
+    return { kind: version.kind, file: validPath(version.file), w: version.w, h: version.h, bytes: version.bytes };
+  });
+  const metadata = {};
+  for (const [key, allowed] of Object.entries(LABELS)) if (allowed.includes(film[key])) metadata[key] = film[key];
+  for (const key of ['group', 'variant', 'blurb']) {
+    const value = label(film[key], key === 'blurb' ? 1000 : 200);
+    if (value) metadata[key] = value;
+  }
   return {
-    version: 1,
-    updated: text(data.updated, 200),
-    films: data.films.map(film => {
-      if (!film || typeof film !== 'object') invalid();
-      const id = text(film.id, 200);
-      if (ids.has(id)) invalid();
-      ids.add(id);
-      if (!['ltr', 'rtl', 'auto'].includes(film.dir) || !['16:9', '9:16'].includes(film.posterShape)) invalid();
-      if (!Number.isFinite(film.seconds) || film.seconds < 0 || !Array.isArray(film.versions) || !film.versions.length) invalid();
-      const kinds = new Set();
-      const versions = film.versions.map(version => {
-        if (!version || !['phone', 'desktop'].includes(version.kind) || kinds.has(version.kind)) invalid();
-        kinds.add(version.kind);
-        if (![version.w, version.h, version.bytes].every(value => Number.isSafeInteger(value) && value > 0)) invalid();
-        return { kind: version.kind, file: validPath(version.file), w: version.w, h: version.h, bytes: version.bytes };
-      });
-      if (film.release != null && typeof film.release !== 'string') invalid();
-      const metadata = {};
-      for (const [key, allowed] of Object.entries({
-        product: ['MK Voice', 'MK Business OS', 'Talent Atlas', 'MK Job Orbit', 'MK Suite & apps', 'More films'],
-        kind: ['film', 'ad', 'loop', 'teaser', 'demo', 'reel'], lang: ['ar', 'en'],
-      })) {
-        if (film[key] != null) { if (!allowed.includes(film[key])) invalid(); metadata[key] = film[key]; }
-      }
-      for (const key of ['group', 'variant', 'blurb']) {
-        if (film[key] != null) metadata[key] = text(film[key], key === 'blurb' ? 1000 : 200);
-      }
-      return {
-        id, title: text(film.title), dir: film.dir, seconds: film.seconds,
-        added: film.added == null ? '' : text(film.added, 200),
-        poster: validPath(film.poster), posterShape: film.posterShape,
-        versions, release: film.release ?? null, ...metadata,
-      };
-    }),
+    id, title: text(film.title), dir: film.dir, seconds: film.seconds,
+    added: label(film.added, 200) || '',
+    poster: validPath(film.poster), posterShape: film.posterShape,
+    versions, release: typeof film.release === 'string' ? film.release : null, ...metadata,
   };
 }
 

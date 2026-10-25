@@ -46,6 +46,15 @@ test('chips and search include alternate cuts, Arabic, metadata, and combined fi
   assert.equal(filterFilms(groups, 'Arabic')[0].variants.length, 2);
 });
 
+test('an episode is labelled Episode and listed with Films; an unknown kind shows as Film', () => {
+  assert.equal(kindLabel('episode'), 'Episode');
+  const groups = groupFilms([film('ep', { kind: 'episode' }), film('ad', { kind: 'ad' }), film('odd', { kind: 'hologram' })]);
+  assert.equal(groups.find(g => g.id === 'ep').kind, 'episode');
+  assert.equal(groups.find(g => g.id === 'odd').kind, 'film');
+  assert.deepEqual(filterFilms(groups, 'Films').map(g => g.id).sort(), ['ep', 'odd']);
+  assert.equal(splitTitle('Pop & Ship — Ep 1 (episode)').notes.length, 0, 'the kind is not repeated as a note');
+});
+
 test('progress stores numbers per id and strips all other fields on read', () => {
   const local = storage();
   saveProgress(local, 'sample', 32, 100);
