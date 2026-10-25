@@ -1572,7 +1572,8 @@ try {
     assert.equal(await page.locator('#topbar').isVisible(), false);
     await page.keyboard.press('f');
     await page.waitForFunction(() => document.fullscreenElement === document.querySelector('main'));
-    assert.equal(await page.getByRole('button', { name: 'Exit full screen' }).count(), 1, 'the button says how to leave');
+    // The label changes on 'fullscreenchange', which Chrome can fire a frame after fullscreenElement is set.
+    await page.getByRole('button', { name: 'Exit full screen' }).waitFor(); // the button says how to leave
     await page.keyboard.press(' ');
     assert.equal((await media(page)).paused, true, 'Space pauses');
     await page.keyboard.press(' ');

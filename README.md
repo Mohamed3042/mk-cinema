@@ -135,7 +135,7 @@ The browser suite uses headless Chrome at `C:\Program Files\Google\Chrome\Applic
 - Motion proof: `npm.cmd run shots:motion` records a scripted tour (desktop, then phone) with Playwright video in `shots/motion/` and cuts 12-frame contact strips with ffmpeg to `shots/motion-<name>.png`.
 - Human review and test scope: `REPORT.md`.
 
-The browser suite uses only this repo and does not compare the old mockups. Runtime fonts are local SIL OFL files; see `fonts/README.md` and the license files. Sample assets can be regenerated with `py -3.12 scripts/make-assets.py` (Pillow and ffmpeg are needed only for asset work).
+The browser suite uses only this repo and does not compare the old mockups. `npm.cmd run shots:compare -- <mockups folder>` puts each mockup next to the capture of the same name as `shots/compare-<name>.png`. Runtime fonts are local SIL OFL files; see `fonts/README.md` and the license files. Sample assets can be regenerated with `py -3.12 scripts/make-assets.py` (Pillow and ffmpeg are needed only for asset work).
 
 ## Owner checks still needed
 

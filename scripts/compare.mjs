@@ -1,12 +1,12 @@
 import sharp from 'sharp';
-import { readdir, access } from 'node:fs/promises';
+import { readdir, access, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const approved = 'C:/Users/GAMING/Documents/films/mk-cinema-concepts/velvet-premiere';
 
-export async function compareShots() {
+// Puts each approved mockup (a folder outside this public repo) next to the capture of the same name in shots/.
+export async function compareShots(approved) {
   const shots = resolve(root, 'shots');
   let count = 0;
   for (const file of await readdir(approved)) {
@@ -27,5 +27,10 @@ export async function compareShots() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.log(`Created ${await compareShots()} mockup comparisons in shots/.`);
+  const approved = process.argv[2] ? resolve(process.argv[2]) : '';
+  if (!approved || !(await stat(approved).catch(() => null))?.isDirectory()) {
+    console.error(`${approved ? `No folder at ${approved}. ` : ''}Name the folder of approved mockups: node scripts/compare.mjs <folder>`);
+    process.exit(1);
+  }
+  console.log(`Created ${await compareShots(approved)} mockup comparisons in shots/.`);
 }
