@@ -96,11 +96,11 @@ test('titles split into a brand line, a clean name, and notes that add something
   const split = title => splitTitle(title);
   assert.deepEqual(split('North Studio — Night Swim (film)'), { kicker: 'North Studio', name: 'Night Swim', notes: [] });
   assert.deepEqual(split('North Studio — reel'), { kicker: 'North Studio', name: 'Reel', notes: [] });
-  assert.deepEqual(split('Lumen App — Demo (app 0.7.3)'), { kicker: 'Lumen App', name: 'Demo', notes: ['app 0.7.3'] });
-  assert.deepEqual(split('Lumen App — Sales & Support, Arabic-led cut (demo · عربي)'), { kicker: 'Lumen App', name: 'Sales & Support, Arabic-led cut', notes: [] });
-  assert.deepEqual(split('Lumen App — Second Look (series)').notes, ['series']);
-  assert.deepEqual(split('Rose Atelier — launch reel (9:16 · عربي)'), { kicker: 'Rose Atelier', name: 'Launch reel', notes: ['9:16'] });
-  assert.deepEqual(split('Trilogy — Three rooms. One door.'), { kicker: 'Trilogy', name: 'Three rooms. One door.', notes: [] });
+  assert.deepEqual(split('Lumen App — Walkthrough (app 2.4.1)'), { kicker: 'Lumen App', name: 'Walkthrough', notes: ['app 2.4.1'] });
+  assert.deepEqual(split('Lumen App — Front Desk, Arabic-first cut (demo · عربي)'), { kicker: 'Lumen App', name: 'Front Desk, Arabic-first cut', notes: [] });
+  assert.deepEqual(split('Lumen App — Small Rooms (series)').notes, ['series']);
+  assert.deepEqual(split('Rose Atelier — window reel (9:16 · عربي)'), { kicker: 'Rose Atelier', name: 'Window reel', notes: ['9:16'] });
+  assert.deepEqual(split('Tide Lab — Two shores. One boat.'), { kicker: 'Tide Lab', name: 'Two shores. One boat.', notes: [] });
   assert.deepEqual(split('Golden Hour — V1'), { kicker: 'Golden Hour', name: 'V1', notes: [] });
   assert.deepEqual(split('A – B — C'), { kicker: 'A', name: 'B — C', notes: [] });
 });
@@ -109,7 +109,7 @@ test('titles without a brand line stay whole; odd input never empties a title', 
   assert.deepEqual(splitTitle('Salt & Pepper'), { kicker: '', name: 'Salt & Pepper', notes: [] });
   assert.deepEqual(splitTitle('رحلة الضوء'), { kicker: '', name: 'رحلة الضوء', notes: [] });
   assert.deepEqual(splitTitle('Day-to-day - plan'), { kicker: '', name: 'Day-to-day - plan', notes: [] });
-  assert.deepEqual(splitTitle('Prof. Sample — Thank-you film (عربي)'), { kicker: 'Prof. Sample', name: 'Thank-you film', notes: [] });
+  assert.deepEqual(splitTitle('Dr. Example — Garden film (عربي)'), { kicker: 'Dr. Example', name: 'Garden film', notes: [] });
   assert.equal(splitTitle('(عربي)').name, '(عربي)');
   assert.equal(splitTitle('Brand — (x)').name, '(x)');
   assert.deepEqual(splitTitle(undefined), { kicker: '', name: '', notes: [] });

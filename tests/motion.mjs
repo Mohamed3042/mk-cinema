@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
+import sharp from 'sharp';
 import { fileURLToPath } from 'node:url';
 import { serve } from '../scripts/serve.mjs';
 import { feedWindow, feedProgress, feedTime } from '../motion.js';
@@ -104,7 +105,8 @@ try {
   await record('top bar is clear over the hero and frosted ink within 80 px of scroll', async () => {
     const { context, page } = await session();
     await loaded(page);
-    const look = () => page.locator('#topbar').evaluate(el => { const s = getComputedStyle(el); return { background: s.backgroundColor, frost: s.backdropFilter || s.webkitBackdropFilter }; });
+    // The bar's frost lives on ::after, so the glass inside the bar still sees the film (motion.css).
+    const look = () => page.locator('#topbar').evaluate(el => { const s = getComputedStyle(el, '::after'); return { background: s.backgroundColor, frost: s.backdropFilter || s.webkitBackdropFilter }; });
     assert.equal((await look()).background, 'rgba(5, 6, 10, 0)');
     await page.evaluate(() => scrollTo(0, 40));
     await page.waitForFunction(() => document.querySelector('#topbar').style.getPropertyValue('--bar') === '0.500');
@@ -756,8 +758,9 @@ try {
       return (high + 0.05) / (low + 0.05);
     }, background);
     // Backgrounds are the Liquid Glass surfaces each text sits on: the tab capsule over frosted ink, the white
-    // pills, the ink page, the smoked chip glass, and the details panel (a selected version is 10 % lighter).
-    for (const [selector, background] of [['.tab:not([aria-current])', '#1e1f24'], ['.tab[aria-current]', '#ffffff'], ['.shelf-count', '#05060a'], ['.filter-chip[aria-pressed=false]', '#08090d'], ['.filter-chip[aria-pressed=true]', '#ffffff']]) assert.ok(await ratio(selector, background) >= 4.5, `${selector} passes AA`);
+    // pills, the smoked chip glass, and the details panel (a selected version is 10 % lighter). The row counts sit
+    // on the film light, so they are measured on the rendered page in the next check.
+    for (const [selector, background] of [['.tab:not([aria-current])', '#1e1f24'], ['.tab[aria-current]', '#ffffff'], ['.filter-chip[aria-pressed=false]', '#08090d'], ['.filter-chip[aria-pressed=true]', '#ffffff']]) assert.ok(await ratio(selector, background) >= 4.5, `${selector} passes AA`);
     await page.locator('.film-card[data-film="last-light"]').first().click();
     for (const [selector, background] of [['.detail-meta span:nth-child(2)', '#14161d'], ['.ep-copy small', '#2c2d34'], ['.date-added', '#14161d'], ['.episode:not(.selected) .ep-n', '#14161d']]) assert.ok(await ratio(`#film-detail ${selector}`, background) >= 4.5, `${selector} passes AA`);
     await page.keyboard.press('Escape');
@@ -779,6 +782,32 @@ try {
     assert.equal(await phone.page.locator('#tabbar button[aria-current=page]').count(), 1);
     await phone.context.close();
     await context.close();
+  });
+
+  await record('row counts stay AA over the light of a white poster, read from the rendered page', async () => {
+    const white = await sharp({ create: { width: 640, height: 360, channels: 3, background: '#ffffff' } }).jpeg().toBuffer();
+    const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    for (const [viewport, phone] of [[PHONE, true], [DESKTOP, false]]) {
+      const { context, page } = await session({ viewport, phone, extra: { reducedMotion: 'reduce' } });
+      await page.route('**/demo/posters/*.jpg', route => route.fulfill({ body: white, contentType: 'image/jpeg' }));
+      await loaded(page);
+      await page.waitForFunction(() => document.querySelector('.billboard-poster')?.naturalWidth > 0 && document.documentElement.style.getPropertyValue('--ambient'));
+      const count = page.locator('.shelf-count').first();
+      await count.scrollIntoViewIfNeeded();
+      const r = await count.boundingBox();
+      // The brightest pixel of the background strip just right of the text is the worst case.
+      const strip = await page.screenshot({ clip: { x: Math.round(r.x + r.width + 3), y: Math.round(r.y + 2), width: 8, height: Math.round(r.height - 4) } });
+      const { data } = await sharp(strip).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      let under = [0, 0, 0];
+      for (let i = 0; i < data.length; i += 3) { const px = [data[i], data[i + 1], data[i + 2]]; if (lum(px) > lum(under)) under = px; }
+      const [cr, cg, cb, alpha = 1] = await count.evaluate(el => getComputedStyle(el).color.match(/[\d.]+/g).map(Number));
+      const text = [cr, cg, cb].map((value, i) => value * alpha + under[i] * (1 - alpha));
+      const [high, low] = [lum(text), lum(under)].sort((a, b) => b - a);
+      const contrast = (high + 0.05) / (low + 0.05);
+      assert.ok(contrast >= 4.5, `${viewport.width} px: row count is ${contrast.toFixed(2)}:1 over rgb(${under})`);
+      await context.close();
+    }
   });
 
   for (const big of [false, true]) await record(`previews on a phone: a refused stream ${big ? 'stays on the poster when the film is over 40 MB' : 'falls back to a whole-film download'}`, async () => {
@@ -831,7 +860,7 @@ try {
     assert.equal(await page.locator('.tab[data-tab=reels]').getAttribute('aria-current'), 'page');
     const bar = await box(page, '#topbar'), reel = await box(page, 'section.reel');
     assert.ok(Math.abs(reel.top - bar.bottom) < 1 && Math.abs(reel.bottom - 900) < 1, `the reel fills the area under the top bar (${reel.top}-${reel.bottom}, bar ${bar.bottom})`);
-    assert.equal(await page.locator('#topbar').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(5, 6, 10, 0.72)', 'the bar is frosted ink over the reel');
+    assert.equal(await page.locator('#topbar').evaluate(el => getComputedStyle(el, '::after').backgroundColor), 'rgba(5, 6, 10, 0.72)', 'the bar is frosted ink over the reel');
     const films = await page.locator('.reel-item').evaluateAll(items => items.map(item => item.dataset.film));
     assert.equal(films.length, titleCount, 'every title once');
     assert.equal(new Set(films).size, titleCount, 'no title twice');
@@ -1288,11 +1317,11 @@ try {
     await loaded(page);
     await page.evaluate(() => navigator.serviceWorker.ready);
     const cached = await page.evaluate(async () => Object.fromEntries(await Promise.all((await caches.keys()).map(async name => [name, (await (await caches.open(name)).keys()).map(request => new URL(request.url).pathname)]))));
-    assert.deepEqual(Object.keys(cached), ['mkc-shell-v19'], 'Old shell caches are gone');
-    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'invite.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v19'].includes(`/${file}`), `${file} is cached`);
-    assert.ok(cached['mkc-shell-v19'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
+    assert.deepEqual(Object.keys(cached), ['mkc-shell-v20'], 'Old shell caches are gone');
+    for (const file of ['motion.css', 'motion.js', 'previews.js', 'billboard.js', 'rows.js', 'bob.js', 'modal.js', 'feed.js', 'ambient.js', 'reel.js', 'settings.js', 'invite.js', 'player.js', 'viewport.js']) assert.ok(cached['mkc-shell-v20'].includes(`/${file}`), `${file} is cached`);
+    assert.ok(cached['mkc-shell-v20'].every(path => !path.includes('/demo/')), 'No films in the shell cache');
     await page.locator('.tab[data-tab=settings], #topbar [data-tab=settings]').first().click();
-    assert.equal(await page.locator('#shell-version').innerText(), 'v19 · saved for offline', 'Settings → About names the shell this browser holds');
+    assert.equal(await page.locator('#shell-version').innerText(), 'v20 · saved for offline', 'Settings → About names the shell this browser holds');
     await context.close();
   });
 

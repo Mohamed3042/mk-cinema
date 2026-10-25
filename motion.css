@@ -4,14 +4,16 @@
 @media(min-width:900px){:root{--bar-h:68px}}
 [hidden]{display:none!important}
 
-/* Top bar (desktop and phone) and bottom tab bar (phone) */
-.topbar{position:fixed;inset:0 0 auto;z-index:30;height:calc(var(--bar-h) + env(safe-area-inset-top));padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left));background:rgba(5,6,10,calc(var(--bar,0) * .72));-webkit-backdrop-filter:blur(calc(var(--bar,0) * 26px)) saturate(calc(1 + var(--bar,0) * .6));backdrop-filter:blur(calc(var(--bar,0) * 26px)) saturate(calc(1 + var(--bar,0) * .6));view-transition-name:topbar}
+/* Top bar (desktop and phone) and bottom tab bar (phone). The bar's own frost lives on ::after, not on .topbar:
+   a backdrop-filter (or a view-transition-name) on the bar would stop the glass inside it from seeing the film. */
+.topbar{position:fixed;inset:0 0 auto;z-index:30;height:calc(var(--bar-h) + env(safe-area-inset-top));padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}
 .topbar::before{content:"";position:absolute;inset:0 0 -28px;z-index:-1;pointer-events:none;background:linear-gradient(rgba(5,6,10,.55),rgba(5,6,10,0));opacity:calc(1 - var(--bar,0))}
+.topbar::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:rgba(5,6,10,calc(var(--bar,0) * .72));-webkit-backdrop-filter:blur(calc(var(--bar,0) * 26px)) saturate(calc(1 + var(--bar,0) * .6));backdrop-filter:blur(calc(var(--bar,0) * 26px)) saturate(calc(1 + var(--bar,0) * .6))}
 .topbar-row{height:var(--bar-h);display:flex;align-items:center;gap:8px}
 .brand-button{display:flex;align-items:center;min-height:44px;padding:0 4px;background:transparent;flex-shrink:0}
 .topbar .wordmark{font-size:28px;letter-spacing:-1px}.topbar .wordmark>span{color:rgba(255,255,255,.92)}
 /* Tabs sit in one frosted capsule; the white pill (tab-ink) slides to the open tab. */
-.tabs{position:relative;display:flex;gap:0;margin-inline-start:24px;padding:0 4px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid var(--glass-line);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge),0 10px 30px rgba(0,0,0,.25)}
+.tabs{position:relative;display:flex;gap:0;margin-inline-start:24px;padding:0 4px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid var(--glass-line);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:var(--glass-edge),0 10px 30px rgba(0,0,0,.25);view-transition-name:tabs}
 .tab{position:relative;z-index:1;min-height:44px;padding:0 16px;border-radius:999px;background:transparent;color:rgba(255,255,255,.84);font-size:13.5px;font-weight:600;transition:color .35s var(--ease)}
 .tab:hover{color:#fff}.tab[aria-current=page]{color:#000}
 .tab:focus-visible{outline-offset:-2px}
@@ -19,8 +21,8 @@
 .tab-ink.off{opacity:0}
 .topbar .header-actions{margin-left:auto}
 /* Phone: a floating frosted capsule above the home indicator. */
-.tabbar{position:fixed;inset:auto max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));z-index:30;display:flex;padding:6px;border-radius:999px;background:rgba(36,38,46,.5);border:1px solid var(--glass-line);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:0 14px 40px rgba(0,0,0,.45),var(--glass-edge);view-transition-name:tabbar}
-.tabbar button{flex:1;min-width:0;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:999px;background:transparent;color:rgba(255,255,255,.66);font-size:11px;font-weight:600;letter-spacing:.2px;transition:color .3s,background .3s}
+.tabbar{position:fixed;inset:auto max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));z-index:30;display:flex;padding:6px;border-radius:999px;background:rgba(22,24,31,.74);border:1px solid var(--glass-line);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);box-shadow:0 14px 40px rgba(0,0,0,.45),var(--glass-edge);view-transition-name:tabbar}
+.tabbar button{flex:1;min-width:0;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:999px;background:transparent;color:rgba(255,255,255,.78);font-size:11px;font-weight:600;letter-spacing:.2px;transition:color .3s,background .3s}
 .tabbar button svg{transition:transform .45s var(--ease)}
 .tabbar button[aria-current=page]{color:#fff;background:rgba(255,255,255,.16)}
 .tabbar button[aria-current=page] svg{transform:scale(1.08)}
@@ -66,7 +68,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 /* Rows: native momentum scroller with snap on touch; transform paging with paddles on desktop */
 .shelf{position:relative}
 .shelf-heading{display:flex;align-items:center;justify-content:flex-start}
-.shelf-count{font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.shelf-count{font-size:13px;color:var(--muted-lit);white-space:nowrap;font-variant-numeric:tabular-nums}
 .row-dashes{display:flex;align-items:center;gap:4px;height:12px;margin-inline-start:auto}
 .row-dashes:empty,.shelf:not([data-pages]) .row-dashes,.shelf[data-pages="1"] .row-dashes{display:none}
 .row-dashes i{width:12px;height:3px;border-radius:2px;background:rgba(255,255,255,.2);transition:background .3s,width .3s var(--ease)}
@@ -185,7 +187,7 @@ body.has-chrome .library{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-
 .hot-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#fff;transform:scaleX(0);transform-origin:left;opacity:0;transition:opacity .3s}
 .hot-item.is-active .hot-bar{opacity:1}
 .hot-copy{padding:14px 56px 4px 20px}
-.hot-date{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:10px;font-variant-numeric:tabular-nums}
+.hot-date{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--muted-lit);margin-bottom:10px;font-variant-numeric:tabular-nums}
 .hot-copy .kicker{margin-bottom:6px}
 .hot-name{font-size:26px;margin-bottom:8px}
 .hot-copy .blurb{font-size:14px;max-width:520px}
@@ -344,10 +346,10 @@ label.set-row,.set-link{cursor:pointer}
 /* Tab changes crossfade for 250 ms (the browser's view transition) */
 @media(prefers-reduced-motion:no-preference){
   ::view-transition-old(root),::view-transition-new(root){animation-duration:.25s;animation-timing-function:ease}
-  /* The bars stay put while the page crossfades; their own pill and highlight transitions carry the change, so
-     the old bar is never ghosted over the new one. */
-  ::view-transition-old(topbar),::view-transition-old(tabbar){display:none}
-  ::view-transition-new(topbar),::view-transition-new(tabbar){animation:none}
+  /* The tab capsule and the phone tab bar stay put while the page crossfades; their own pill and highlight
+     transitions carry the change, so the old pill is never ghosted over the new one. */
+  ::view-transition-old(tabs),::view-transition-old(tabbar){display:none}
+  ::view-transition-new(tabs),::view-transition-new(tabbar){animation:none}
   .tab-in{animation:tab-in .25s ease}
   @keyframes tab-in{from{opacity:0}}
   .billboard-poster{animation:drift 26s ease-in-out infinite alternate}
@@ -443,3 +445,14 @@ a.primary,a.set-pill{text-decoration:none}
   @keyframes welcome-up{from{opacity:0;transform:translateY(14px)}}
 }
 @media(prefers-reduced-transparency:reduce){.invite-ticket{background:#14161d;-webkit-backdrop-filter:none;backdrop-filter:none}}
+
+/* Without frosted glass (older browsers, or "Reduce transparency"), the floating controls sit on solid ink, like the
+   page's own glass in styles.css. These live here because styles.css loads first and would lose to the rules above. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .tabs,.tabbar,.hot-rail{background:rgba(24,26,33,.94)}
+  .billboard-tool,.round,.detail-close,.paddle{background:rgba(40,43,52,.92)}
+}
+@media(prefers-reduced-transparency:reduce){
+  .tabs,.tabbar,.hot-rail{background:#1c1f26}
+  .billboard-tool,.round,.detail-close,.paddle{background:#262931}
+}

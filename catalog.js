@@ -6,7 +6,7 @@ const RESTATED = new Set([...KINDS, 'عربي', 'arabic']);
 export const kindLabel = kind => KIND_LABELS[kind] || 'Film';
 
 // Catalog titles read like file names ("North Studio — Night Swim (film)"). Screens show a brand line, a clean
-// name, and only the bracket notes that add something ("app 0.7.3"); kind and Arabic already have their own labels.
+// name, and only the bracket notes that add something ("app 2.4.1"); kind and Arabic already have their own labels.
 export function splitTitle(title) {
   let name = String(title ?? '').trim(), kicker = '', notes = [];
   const dash = /^(.+?)\s+[—–]\s+(.+)$/u.exec(name);

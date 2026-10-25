@@ -76,5 +76,6 @@ export function mountAmbient(root, target = document.documentElement) {
   observer.observe(root, { subtree: true, attributes: true, attributeFilter: ['src', 'class'] });
   root.addEventListener('load', paint, true);
   paint();
-  return { stop() { observer.disconnect(); root.removeEventListener('load', paint, true); } };
+  // Stopping also takes the wash down, so nothing of a private poster stays on <html> after Forget token.
+  return { stop() { observer.disconnect(); root.removeEventListener('load', paint, true); target.style.removeProperty('--ambient'); } };
 }
